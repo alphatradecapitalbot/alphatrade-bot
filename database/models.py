@@ -454,39 +454,52 @@ class Database:
 
     def get_admin_global_stats(self):
         self.cursor.execute("SELECT COUNT(*) FROM users")
-        users = self.cursor.fetchone()[0]
+        total_users = self.cursor.fetchone()[0]
         
-        self.cursor.execute("SELECT SUM(amount) FROM investments WHERE status = 'active'")
-        capital = self.cursor.fetchone()[0] or 0.0
+        # total_capital → sum(investments.amount)
+        self.cursor.execute("SELECT SUM(amount) FROM investments")
+        total_capital = self.cursor.fetchone()[0] or 0.0
         
-        self.cursor.execute("SELECT SUM(total) FROM investments WHERE status = 'completed'")
-        paid = self.cursor.fetchone()[0] or 0.0
+        # total_profit → sum(withdrawals.amount where status = paid)
+        # Using 'approved' as 'paid' for withdrawals
+        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'approved'")
+        total_profit = self.cursor.fetchone()[0] or 0.0
         
+        # active_investments → count(investments where status = active)
         self.cursor.execute("SELECT COUNT(*) FROM investments WHERE status = 'active'")
-        active_inv = self.cursor.fetchone()[0]
+        active_investments = self.cursor.fetchone()[0]
 
-        # New metrics
+        # total_deposits → sum(deposits.amount where status = approved)
+        # In our DB 'confirmed' is the 'approved' status for deposits
         self.cursor.execute("SELECT SUM(amount) FROM deposits WHERE status = 'confirmed'")
         total_deposits = self.cursor.fetchone()[0] or 0.0
 
+        # total_withdrawals → sum(withdrawals.amount where status = paid)
         self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'approved'")
         total_withdrawals = self.cursor.fetchone()[0] or 0.0
 
+        # pending_deposits → count(deposits where status = pending)
         self.cursor.execute("SELECT COUNT(*) FROM deposits WHERE status = 'pending'")
         pending_deposits = self.cursor.fetchone()[0]
 
+        # pending_withdrawals → count(withdrawals where status = pending)
         self.cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")
         pending_withdrawals = self.cursor.fetchone()[0]
         
+        # today_capital → sum(investments.amount where date = today)
+        self.cursor.execute("SELECT SUM(amount) FROM investments WHERE date(start_time) = date('now')")
+        today_capital = self.cursor.fetchone()[0] or 0.0
+        
         return {
-            "users": users,
-            "capital": capital,
-            "paid": paid,
-            "active_inv": active_inv,
+            "total_users": total_users,
+            "total_capital": total_capital,
+            "total_profit": total_profit,
+            "active_investments": active_investments,
             "total_deposits": total_deposits,
             "total_withdrawals": total_withdrawals,
             "pending_deposits": pending_deposits,
-            "pending_withdrawals": pending_withdrawals
+            "pending_withdrawals": pending_withdrawals,
+            "today_capital": today_capital
         }
 
     def get_withdraw(self, withdrawal_id):

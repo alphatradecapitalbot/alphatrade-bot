@@ -319,15 +319,16 @@ async def process_admin_stats_call(callback: types.CallbackQuery):
         return
     stats = admin_stats.get_system_stats()
     text = (
-        "📊 SYSTEM STATS\n\n"
-        f"Total Users: {stats['users']}\n"
-        f"Total Capital: {stats['capital']:.2f} USDT\n"
-        f"Total Profit Paid: {stats['paid']:.2f} USDT\n"
-        f"Active Investments: {stats['active_inv']}\n\n"
-        f"Total Deposits: {stats['total_deposits']:.2f} USDT\n"
-        f"Total Withdrawals: {stats['total_withdrawals']:.2f} USDT\n\n"
-        f"Pending Deposits: {stats['pending_deposits']}\n"
-        f"Pending Withdrawals: {stats['pending_withdrawals']}"
+        "📊 **SYSTEM STATS**\n\n"
+        f"👤 Total Users: {stats['total_users']}\n\n"
+        f"💰 Total Capital: {stats['total_capital']:.2f} USDT\n"
+        f"📈 Total Profit Paid: {stats['total_profit']:.2f} USDT\n\n"
+        f"📊 Active Investments: {stats['active_investments']}\n\n"
+        f"🏦 Total Deposits: {stats['total_deposits']:.2f} USDT\n"
+        f"💸 Total Withdrawals: {stats['total_withdrawals']:.2f} USDT\n\n"
+        f"⏳ Pending Deposits: {stats['pending_deposits']}\n"
+        f"⏳ Pending Withdrawals: {stats['pending_withdrawals']}\n\n"
+        f"📅 Capital Invested Today: {stats['today_capital']:.2f} USDT"
     )
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
