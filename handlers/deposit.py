@@ -91,7 +91,8 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
         f"Monto a enviar:\n**{amount} USDT**\n\n"
         "Dirección de depósito:\n\n"
         f"`{USDT_TRC20_WALLET}`\n\n"
-        "Red:\n**TRC20**"
+        "Moneda de depósito:\n**USDT (TRC20)**\n\n"
+        "Red:\n**TRON (TRC20)**"
     )
     
     await callback.message.edit_text(deposit_instr, parse_mode="Markdown")
@@ -117,8 +118,10 @@ async def process_txid(message: types.Message, state: FSMContext):
         "Resumen de tu depósito:\n\n"
         "Monto enviado:\n"
         f"**{amount} USDT**\n\n"
+        "Moneda:\n"
+        "**USDT (TRC20)**\n\n"
         "Red:\n"
-        "**TRC20**\n\n"
+        "**TRON (TRC20)**\n\n"
         "Dirección de depósito:\n\n"
         f"`{USDT_TRC20_WALLET}`\n\n"
         "Una vez enviada la captura, tu depósito será revisado por el administrador.\n\n"

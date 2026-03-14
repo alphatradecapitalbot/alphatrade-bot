@@ -49,7 +49,7 @@ async def process_admin_users(callback: types.CallbackQuery):
         f"Users: {info['total']}\n"
         f"Active Investments: {info['active']}\n"
         f"Users without inv: {info['without_inv']}\n\n"
-        f"Total Capital: **{info['capital']:.2f} TON**"
+        f"Total Capital: **{info['capital']:.2f} USDT**"
     )
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -68,7 +68,7 @@ async def process_admin_deposits(callback: types.CallbackQuery):
         for d in pending:
             d_text = (
                 f"👤 User: `{d['user_id']}`\n"
-                f"Amount: {d['amount']} TON\n"
+                f"Amount: {d['amount']} USDT\n"
                 f"TXID: `{d['tx_hash']}`"
             )
             if d['proof_type'] == 'photo' and d['proof_data']:
@@ -90,7 +90,7 @@ async def process_admin_deposits(callback: types.CallbackQuery):
         text += "No hay depósitos verificados recientes."
     else:
         for d in deposits:
-            text += f"✅ User: `{d['user_id']}` — **{d['amount']} TON**\n"
+            text += f"✅ User: `{d['user_id']}` — **{d['amount']} USDT**\n"
             
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -159,7 +159,7 @@ async def process_approve_deposit(callback: types.CallbackQuery):
             "Tu inversión ha sido activada.\n\n"
             f"Plan:\n**{plan_name}**\n\n"
             f"Monto invertido:\n**{capital} USDT**\n\n"
-            f"Total a recibir en 24 horas:\n**{capital + profit} USDT**\n\n"
+            f"Total a recibir in 24 horas:\n**{capital + profit} USDT**\n\n"
             "Revisa tu inversión en:\n\n"
             "📊 **Mi inversión**"
         )
@@ -306,7 +306,7 @@ async def reject_withdraw_handler(callback: types.CallbackQuery, bot):
     db.update_withdraw_status(withdraw_id, "rejected")
     db.add_user_balance(user_id, withdrawal['amount'])
     try:
-        await bot.send_message(user_id, f"❌ Your withdrawal of {withdrawal['amount']} TON was rejected. Funds returned.")
+        await bot.send_message(user_id, f"❌ Your withdrawal of {withdrawal['amount']} USDT was rejected. Funds returned.")
     except: pass
 
     await callback.message.edit_text(f"❌ Withdrawal #{withdraw_id} rejected")
@@ -319,12 +319,66 @@ async def process_admin_stats_call(callback: types.CallbackQuery):
         return
     stats = admin_stats.get_system_stats()
     text = (
-        "📊 **SYSTEM STATS**\n\n"
+        "📊 SYSTEM STATS\n\n"
         f"Total Users: {stats['users']}\n"
-        f"Total Capital: **{stats['capital']:.2f} TON**\n"
-        f"Total Profit Paid: **{stats['paid']:.2f} TON**\n"
-        f"Active Investments: {stats['active_inv']}"
+        f"Total Capital: {stats['capital']:.2f} USDT\n"
+        f"Total Profit Paid: {stats['paid']:.2f} USDT\n"
+        f"Active Investments: {stats['active_inv']}\n\n"
+        f"Total Deposits: {stats['total_deposits']:.2f} USDT\n"
+        f"Total Withdrawals: {stats['total_withdrawals']:.2f} USDT\n\n"
+        f"Pending Deposits: {stats['pending_deposits']}\n"
+        f"Pending Withdrawals: {stats['pending_withdrawals']}"
     )
+    await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_recent_deposits")
+async def process_admin_recent_deposits(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
+        return
+    
+    deposits = db.get_admin_recent_deposits(10)
+    text = "📄 **LAST 10 DEPOSITS**\n\n"
+    if not deposits:
+        text += "No hay registros."
+    else:
+        for d in deposits:
+            date_str = d['timestamp'].split('.')[0] if isinstance(d['timestamp'], str) else d['timestamp'].strftime("%Y-%m-%d")
+            text += (
+                f"👤 ID: `{d['user_id']}`\n"
+                f"Username: @{d['username'] or 'N/A'}\n"
+                f"Amount: **{d['amount']} USDT**\n"
+                f"Status: {d['status'].capitalize()}\n"
+                f"Date: {date_str}\n"
+                "------------------\n"
+            )
+    
+    await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_recent_withdrawals")
+async def process_admin_recent_withdrawals(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
+        return
+        
+    withdrawals = db.get_admin_recent_withdrawals(10)
+    text = "📄 **LAST 10 WITHDRAWALS**\n\n"
+    if not withdrawals:
+        text += "No hay registros."
+    else:
+        for w in withdrawals:
+            date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
+            text += (
+                f"👤 ID: `{w['user_id']}`\n"
+                f"Username: @{w['username'] or 'N/A'}\n"
+                f"Amount: **{w['amount']} USDT**\n"
+                f"Status: {w['status'].capitalize()}\n"
+                f"Date: {date_str}\n"
+                "------------------\n"
+            )
+            
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
 
@@ -351,8 +405,8 @@ async def process_user_search_msg(message: types.Message, state: FSMContext):
             text = (
                 f"👤 **User ID: {info['id']}**\n\n"
                 f"Username: @{info['username'] or 'N/A'}\n"
-                f"Total invested: **{info['total_invested']:.2f} TON**\n"
-                f"Total profit: **{info['total_profit']:.2f} TON**\n"
+                f"Total invested: **{info['total_invested']:.2f} USDT**\n"
+                f"Total profit: **{info['total_profit']:.2f} USDT**\n"
                 f"Active investments: {info['active_investments']}"
             )
             await message.answer(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")

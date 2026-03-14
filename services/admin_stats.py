@@ -9,7 +9,11 @@ def get_system_stats():
         "users": stats['users'],
         "capital": stats['capital'],
         "paid": stats['paid'],
-        "active_inv": stats['active_inv']
+        "active_inv": stats['active_inv'],
+        "total_deposits": stats['total_deposits'],
+        "total_withdrawals": stats['total_withdrawals'],
+        "pending_deposits": stats['pending_deposits'],
+        "pending_withdrawals": stats['pending_withdrawals']
     }
 
 def get_user_breakdown():

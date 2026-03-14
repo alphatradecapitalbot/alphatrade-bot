@@ -356,7 +356,43 @@ class Database:
         self.cursor.execute("SELECT w.*, u.username FROM withdrawals w JOIN users u ON w.user_id = u.id WHERE w.status = 'pending'")
         return self.cursor.fetchall()
 
-    # --- New Admin Monitoring Methods ---
+    # --- New User History Methods ---
+
+    def get_user_deposits(self, user_id):
+        self.cursor.execute(
+            "SELECT * FROM deposits WHERE user_id = ? ORDER BY timestamp DESC",
+            (user_id,)
+        )
+        return self.cursor.fetchall()
+
+    def get_user_withdrawals(self, user_id):
+        self.cursor.execute(
+            "SELECT * FROM withdrawals WHERE user_id = ? ORDER BY timestamp DESC",
+            (user_id,)
+        )
+        return self.cursor.fetchall()
+
+    # --- Improved Admin Monitoring Methods ---
+
+    def get_admin_recent_deposits(self, limit=10):
+        self.cursor.execute('''
+            SELECT d.*, u.username 
+            FROM deposits d 
+            JOIN users u ON d.user_id = u.id 
+            ORDER BY d.timestamp DESC 
+            LIMIT ?
+        ''', (limit,))
+        return self.cursor.fetchall()
+
+    def get_admin_recent_withdrawals(self, limit=10):
+        self.cursor.execute('''
+            SELECT w.*, u.username 
+            FROM withdrawals w 
+            JOIN users u ON w.user_id = u.id 
+            ORDER BY w.timestamp DESC 
+            LIMIT ?
+        ''', (limit,))
+        return self.cursor.fetchall()
 
     def get_admin_user_sections(self):
         """Returns total users, active investors, and users without investment."""
@@ -428,12 +464,29 @@ class Database:
         
         self.cursor.execute("SELECT COUNT(*) FROM investments WHERE status = 'active'")
         active_inv = self.cursor.fetchone()[0]
+
+        # New metrics
+        self.cursor.execute("SELECT SUM(amount) FROM deposits WHERE status = 'confirmed'")
+        total_deposits = self.cursor.fetchone()[0] or 0.0
+
+        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'approved'")
+        total_withdrawals = self.cursor.fetchone()[0] or 0.0
+
+        self.cursor.execute("SELECT COUNT(*) FROM deposits WHERE status = 'pending'")
+        pending_deposits = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")
+        pending_withdrawals = self.cursor.fetchone()[0]
         
         return {
             "users": users,
             "capital": capital,
             "paid": paid,
-            "active_inv": active_inv
+            "active_inv": active_inv,
+            "total_deposits": total_deposits,
+            "total_withdrawals": total_withdrawals,
+            "pending_deposits": pending_deposits,
+            "pending_withdrawals": pending_withdrawals
         }
 
     def get_withdraw(self, withdrawal_id):

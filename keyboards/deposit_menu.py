@@ -10,7 +10,7 @@ def main_menu():
         [KeyboardButton(text="💳 Retirar"), KeyboardButton(text="👥 Referidos")],
         [KeyboardButton(text="🧮 Calculadora"), KeyboardButton(text="📈 Ranking")],
         [KeyboardButton(text="📊 Estadísticas"), KeyboardButton(text="💸 Pagos recientes")],
-        [KeyboardButton(text="📜 Historial"), KeyboardButton(text="📜 Reglas")],
+        [KeyboardButton(text="📥 Historial de Depósitos"), KeyboardButton(text="📤 Historial de Retiros")],
         [KeyboardButton(text="ℹ️ Información"), KeyboardButton(text="📞 Soporte")],
         [KeyboardButton(text="🎥 Videos"), KeyboardButton(text="🔄 Reiniciar")]
     ]

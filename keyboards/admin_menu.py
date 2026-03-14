@@ -8,6 +8,8 @@ def admin_main_menu():
             [InlineKeyboardButton(text="📈 Inversiones", callback_data="admin_investments")],
             [InlineKeyboardButton(text="💸 Retiros", callback_data="admin_withdrawals")],
             [InlineKeyboardButton(text="📊 Estadísticas", callback_data="admin_stats")],
+            [InlineKeyboardButton(text="📄 Ver depósitos recientes", callback_data="admin_recent_deposits")],
+            [InlineKeyboardButton(text="📄 Ver retiros recientes", callback_data="admin_recent_withdrawals")],
             [InlineKeyboardButton(text="🔎 Buscar usuario", callback_data="admin_search_user")],
             [InlineKeyboardButton(text="✉ Enviar mensaje usuario", callback_data="admin_message_user")],
             [InlineKeyboardButton(text="📢 Broadcast a todos", callback_data="admin_broadcast")]

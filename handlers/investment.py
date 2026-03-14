@@ -285,6 +285,57 @@ async def process_with_amount(message: types.Message, state: FSMContext):
     except:
         await message.answer("❌ **Error al procesar el monto.**", parse_mode="Markdown")
     await state.clear()
+
+@router.message(F.text == "📥 Historial de Depósitos")
+async def cmd_deposit_history(message: types.Message):
+    deposits = db.get_user_deposits(message.from_user.id)
+    if not deposits:
+        await message.answer("You have no deposits yet.")
+        return
+        
+    text = "📥 **DEPOSIT HISTORY**\n\n"
+    for i, d in enumerate(deposits):
+        status_map = {
+            "pending": "⏳ Pending",
+            "confirmed": "✅ Approved",
+            "rejected": "❌ Rejected"
+        }
+        status_str = status_map.get(d['status'], d['status'])
+        date_str = d['timestamp'].split('.')[0] if isinstance(d['timestamp'], str) else d['timestamp'].strftime("%Y-%m-%d")
+        
+        text += (
+            f"**Deposit #{i+1}**\n"
+            f"Amount: {d['amount']} USDT\n"
+            f"Status: {status_str}\n"
+            f"Date: {date_str}\n\n"
+        )
+    await message.answer(text, parse_mode="Markdown")
+
+@router.message(F.text == "📤 Historial de Retiros")
+async def cmd_withdrawal_history(message: types.Message):
+    withdrawals = db.get_user_withdrawals(message.from_user.id)
+    if not withdrawals:
+        await message.answer("You have no withdrawals yet.")
+        return
+        
+    text = "📤 **WITHDRAWAL HISTORY**\n\n"
+    for i, w in enumerate(withdrawals):
+        status_map = {
+            "pending": "⏳ Pending",
+            "approved": "✅ Paid",
+            "rejected": "❌ Rejected"
+        }
+        status_str = status_map.get(w['status'], w['status'])
+        date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
+        
+        text += (
+            f"**Withdrawal #{i+1}**\n"
+            f"Amount: {w['amount']} USDT\n"
+            f"Status: {status_str}\n"
+            f"Date: {date_str}\n\n"
+        )
+    await message.answer(text, parse_mode="Markdown")
+
 @router.message(F.text == "📜 Historial")
 async def cmd_history(message: types.Message):
     history = db.get_investment_history(message.from_user.id)
