@@ -10,9 +10,9 @@ def main_menu():
         [KeyboardButton(text="💳 Retirar"), KeyboardButton(text="👥 Referidos")],
         [KeyboardButton(text="🧮 Calculadora"), KeyboardButton(text="📈 Ranking")],
         [KeyboardButton(text="📊 Estadísticas"), KeyboardButton(text="💸 Pagos recientes")],
-        [KeyboardButton(text="📥 Historial de Depósitos"), KeyboardButton(text="📤 Historial de Retiros")],
-        [KeyboardButton(text="ℹ️ Información"), KeyboardButton(text="📞 Soporte")],
-        [KeyboardButton(text="🎥 Videos"), KeyboardButton(text="🔄 Reiniciar")]
+        [KeyboardButton(text="📜 Historial"), KeyboardButton(text="ℹ️ Información")],
+        [KeyboardButton(text="📞 Soporte"), KeyboardButton(text="🎥 Videos")],
+        [KeyboardButton(text="🔄 Reiniciar")]
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
@@ -61,46 +61,7 @@ def calculator_plans_keyboard():
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def admin_home():
-    buttons = [
-        [InlineKeyboardButton(text="📥 Depósitos pendientes", callback_data="admin_deposits")],
-        [InlineKeyboardButton(text="💸 Retiros pendientes", callback_data="admin_withdrawals")],
-        [InlineKeyboardButton(text="👥 Usuarios", callback_data="admin_users")],
-        [InlineKeyboardButton(text="📊 Estadísticas", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="📢 Enviar anuncio", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="⚙️ Configuración", callback_data="admin_settings")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def admin_settings_keyboard():
-    buttons = [
-        [InlineKeyboardButton(text="TRC20 Wallet", callback_data="set_wallet_trc20")],
-        [InlineKeyboardButton(text="Mínimo Depósito", callback_data="set_min_deposit")],
-        [InlineKeyboardButton(text="🔙 Volver", callback_data="admin_back")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def admin_deposit_actions(deposit_id, user_id):
-    buttons = [
-        [InlineKeyboardButton(text="✅ Aprobar depósito", callback_data=f"approve_deposit:{deposit_id}:{user_id}")],
-        [InlineKeyboardButton(text="❌ Rechazar depósito", callback_data=f"reject_deposit:{deposit_id}:{user_id}")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def admin_withdrawal_actions(withdrawal_id):
-    buttons = [
-        [
-            InlineKeyboardButton(text="Aprobar ✅", callback_data=f"with_app_{withdrawal_id}"),
-            InlineKeyboardButton(text="Rechazar ❌", callback_data=f"with_rej_{withdrawal_id}")
-        ]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def admin_investment_list(investments):
-    buttons = []
-    for inv in investments:
-        buttons.append([InlineKeyboardButton(text=f"Inv #{inv['id']} - @{inv['username']} ({inv['amount']} USDT)", callback_data=f"record_res_{inv['id']}")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# Admin functions removed - use keyboards/admin_menu.py instead
 
 def withdrawal_options_keyboard():
     buttons = [

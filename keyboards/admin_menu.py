@@ -52,4 +52,4 @@ def admin_withdraw_actions(withdraw_id, user_id):
 
 def admin_back_button():
     buttons = [[InlineKeyboardButton(text="🔙 Volver", callback_data="admin_main_back")]]
-    return InlineKeyboardMarkup(inline_keyboard=builders.buttons) if 'builders' in globals() else InlineKeyboardMarkup(inline_keyboard=buttons)
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

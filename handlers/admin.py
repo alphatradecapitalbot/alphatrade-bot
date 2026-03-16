@@ -19,6 +19,7 @@ class AdminStates(StatesGroup):
     waiting_for_msg_user_id = State()
     waiting_for_msg_text = State()
     waiting_for_broadcast_msg = State()
+    waiting_for_withdraw_txid = State()
 
 @router.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -283,7 +284,7 @@ async def process_admin_withdrawals(callback: types.CallbackQuery):
     await callback.answer()
 
 @router.callback_query(F.data.startswith("approve_withdraw:"))
-async def approve_withdraw_handler(callback: types.CallbackQuery, bot):
+async def approve_withdraw_handler(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
@@ -296,13 +297,56 @@ async def approve_withdraw_handler(callback: types.CallbackQuery, bot):
         await callback.answer("Already processed or not found", show_alert=True)
         return
 
-    db.update_withdraw_status(withdraw_id, "approved")
-    try:
-        await bot.send_message(user_id, f"✅ Your withdrawal of {withdrawal['amount']} USDT has been approved.")
-    except: pass
+    await state.update_data(withdraw_id=withdraw_id, withdraw_user_id=user_id, withdraw_amount=withdrawal['amount'])
+    await state.set_state(AdminStates.waiting_for_withdraw_txid)
+    
+    await callback.message.answer(
+        f"💰 **REGISTRAR PAGO**\n\n"
+        f"Usuario: `{user_id}`\n"
+        f"Monto: **{withdrawal['amount']} USDT**\n\n"
+        "Introduce la TXID del pago (o escribe **SKIP** para omitir):"
+    )
+    await callback.answer()
 
-    await callback.message.edit_text(f"✅ Withdrawal #{withdraw_id} approved")
-    await callback.answer("Approved")
+@router.message(AdminStates.waiting_for_withdraw_txid)
+async def process_withdraw_txid(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    data = await state.get_data()
+    withdraw_id = data['withdraw_id']
+    user_id = data['withdraw_user_id']
+    amount = data['withdraw_amount']
+    
+    txid = message.text.strip()
+    if txid.upper() == "SKIP":
+        txid = ""
+        
+    # 1. Update DB
+    db.update_withdraw_status(withdraw_id, "paid", txid)
+    
+    # 2. Notify User
+    notification = (
+        "✅ **RETIRO COMPLETADO**\n\n"
+        f"Monto: **{amount} USDT**\n"
+        f"TXID: `{txid or 'Manual/Interno'}`\n"
+        "Estado: **Pagado**\n\n"
+        "Gracias por confiar en AlphaTrade Capital."
+    )
+    try:
+        await message.bot.send_message(user_id, notification, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Failed to notify user {user_id} of withdrawal payment: {e}")
+
+    # 3. Confirm to Admin
+    await message.answer(
+        "✅ **RETIRO MARCADO COMO PAGADO**\n\n"
+        f"Usuario: `{user_id}`\n"
+        f"TXID: `{txid or 'Sin TXID'}`\n"
+        "Las estadísticas han sido actualizadas.",
+        reply_markup=builders.admin_back_button()
+    )
+    await state.clear()
 
 @router.callback_query(F.data.startswith("reject_withdraw:"))
 async def reject_withdraw_handler(callback: types.CallbackQuery, bot):
@@ -462,7 +506,7 @@ async def process_msg_user_text(message: types.Message, state: FSMContext, bot):
     user_id = data.get("target_user_id")
     try:
         await bot.send_message(user_id, f"✉ **Message from Admin:**\n\n{message.text}", parse_mode="Markdown")
-        await message.answer(f"✅ Message sent to {user_id}")
+        await message.answer(f"✅ Message sent to {user_id}", reply_markup=builders.admin_back_button())
     except:
         await message.answer(f"❌ Failed to send message to {user_id}")
     await state.clear()
@@ -490,5 +534,5 @@ async def process_broadcast_exec(message: types.Message, state: FSMContext, bot)
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await message.answer(f"✅ Broadcast finished. Sent to {count} users.")
+    await message.answer(f"✅ Broadcast finished. Sent to {count} users.", reply_markup=builders.admin_back_button())
     await state.clear()

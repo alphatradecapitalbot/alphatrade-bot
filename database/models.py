@@ -16,6 +16,7 @@ def init_db():
         username TEXT,
         registration_date DATETIME,
         referral_id INTEGER,
+        referral_count INTEGER DEFAULT 0,
         balance REAL DEFAULT 0.0,
         referral_earnings REAL DEFAULT 0.0,
         active_investment BOOLEAN DEFAULT 0,
@@ -51,7 +52,9 @@ def init_db():
         user_id INTEGER,
         amount REAL,
         wallet TEXT,
-        status TEXT, -- pending, approved, rejected
+        status TEXT, -- pending, paid, rejected
+        txid TEXT,
+        paid_at DATETIME,
         timestamp DATETIME,
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
@@ -79,7 +82,10 @@ def init_db():
         ("deposits", "profit", "REAL"),
         ("deposits", "total_return", "REAL"),
         ("deposits", "duration", "TEXT DEFAULT '24h'"),
-        ("investments", "plan", "TEXT")
+        ("investments", "plan", "TEXT"),
+        ("withdrawals", "txid", "TEXT"),
+        ("withdrawals", "paid_at", "DATETIME"),
+        ("users", "referral_count", "INTEGER DEFAULT 0")
     ]
     for table, col, col_type in columns_to_add:
         try:
@@ -249,18 +255,22 @@ class Database:
             )
             self.conn.commit()
 
+    def add_referral_reward(self, referrer_id, reward_amount):
+        self.cursor.execute(
+            "UPDATE users SET referral_earnings = referral_earnings + ?, referral_count = referral_count + ? WHERE id = ?",
+            (reward_amount, 1, referrer_id)
+        )
+        self.conn.commit()
+
     def get_user_stats(self, user_id):
         user = self.get_user(user_id)
         self.cursor.execute("SELECT * FROM investments WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,))
         investment = self.cursor.fetchone()
         
-        self.cursor.execute("SELECT COUNT(*) as count FROM users WHERE referral_id = ?", (user_id,))
-        referral_count = self.cursor.fetchone()['count']
-        
         return {
             "balance": user['balance'] if user else 0.0,
             "investment": investment,
-            "referral_count": referral_count,
+            "referral_count": user['referral_count'] if user else 0,
             "referral_earnings": user['referral_earnings'] if user else 0.0
         }
 
@@ -269,7 +279,7 @@ class Database:
         total_users = self.cursor.fetchone()[0]
         self.cursor.execute("SELECT SUM(amount) FROM investments WHERE status = 'active'")
         total_invested = self.cursor.fetchone()[0] or 0.0
-        self.cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'approved'")
+        self.cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'paid'")
         total_withdrawals = self.cursor.fetchone()[0]
         
         return {
@@ -460,8 +470,7 @@ class Database:
         total_capital = self.cursor.fetchone()[0] or 0.0
         
         # total_profit → sum(withdrawals.amount where status = paid)
-        # Using 'approved' as 'paid' for withdrawals
-        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'approved'")
+        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'paid'")
         total_profit = self.cursor.fetchone()[0] or 0.0
         
         # active_investments → count(investments where status = active)
@@ -474,7 +483,7 @@ class Database:
         total_deposits = self.cursor.fetchone()[0] or 0.0
 
         # total_withdrawals → sum(withdrawals.amount where status = paid)
-        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'approved'")
+        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'paid'")
         total_withdrawals = self.cursor.fetchone()[0] or 0.0
 
         # pending_deposits → count(deposits where status = pending)
@@ -505,8 +514,14 @@ class Database:
         self.cursor.execute("SELECT * FROM withdrawals WHERE id = ?", (withdrawal_id,))
         return self.cursor.fetchone()
 
-    def update_withdraw_status(self, withdrawal_id, status):
-        self.cursor.execute("UPDATE withdrawals SET status = ? WHERE id = ?", (status, withdrawal_id))
+    def update_withdraw_status(self, withdrawal_id, status, txid=None):
+        if status == 'paid':
+            self.cursor.execute(
+                "UPDATE withdrawals SET status = ?, txid = ?, paid_at = ? WHERE id = ?",
+                (status, txid, datetime.now(), withdrawal_id)
+            )
+        else:
+            self.cursor.execute("UPDATE withdrawals SET status = ? WHERE id = ?", (status, withdrawal_id))
         self.conn.commit()
 
     def add_user_balance(self, user_id, amount):
