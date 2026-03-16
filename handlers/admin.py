@@ -142,7 +142,7 @@ async def process_approve_deposit(callback: types.CallbackQuery):
             await callback.answer("Este depósito ya no está pendiente.")
             return
 
-        db.update_deposit_status(deposit_id, "confirmed")
+        res = db.update_deposit_status(deposit_id, "confirmed")
         
         # Activation logic
         from handlers.investment import calculate_profit
@@ -157,10 +157,10 @@ async def process_approve_deposit(callback: types.CallbackQuery):
             "Plan Básico": 15.0,
             "Plan Silver": 20.0,
             "Plan Gold": 35.0,
-            "Plan Platinum": -40.0,
+            "Plan Platinum": 55.0,
             "Plan VIP": 75.0,
-            "Plan Elite": 100.0,
-            "Plan Master": 100.0
+            "Plan Elite": 90.0,
+            "Plan Master": 110.0
         }
         
         profit = plan_profits.get(plan_name)
@@ -177,7 +177,19 @@ async def process_approve_deposit(callback: types.CallbackQuery):
             status="active",
             plan=plan_name
         )
-        db.handle_referral(user_id, capital)
+        
+        # If reward was paid, notify referrer
+        if res and res.get("type") == "referral_reward":
+            referrer_id = res['referrer_id']
+            reward = res['reward']
+            try:
+                reward_msg = (
+                    "🎉 **Has ganado $0.30 USD**\n\n"
+                    "Uno de tus referidos ha realizado una inversión.\n\n"
+                    "Sigue invitando amigos para ganar más."
+                )
+                await callback.bot.send_message(referrer_id, reward_msg, parse_mode="Markdown")
+            except: pass
 
         # Notify user (Specific requested text)
         notify_text = (
@@ -399,11 +411,10 @@ async def process_admin_stats_call(callback: types.CallbackQuery):
     text = (
         "📈 **ESTADÍSTICAS DEL SISTEMA**\n\n"
         f"👥 Total Users: **{stats['total_users']}**\n"
-        f"📊 Total Invested: **{stats['total_capital']:.2f} USDT**\n"
-        f"💸 Total Withdrawn: **{stats['total_withdrawals']:.2f} USDT**\n"
-        f"📥 Total Deposits: **{stats['total_deposits']:.2f} USDT**\n"
-        f"🎁 Total Referral Rewards: **{stats['total_referral_rewards']:.2f} USDT**\n"
-        f"👥 Total Active Referrals: **{stats['total_active_referrals']}**"
+        f"📥 Total Deposited: **{stats['total_deposited']:.2f} USDT**\n"
+        f"💸 Total Withdrawn: **{stats['total_withdrawn']:.2f} USDT**\n"
+        f"📈 Total Invested: **{stats['total_invested']:.2f} USDT**\n"
+        f"🎁 Total Referral Rewards: **{stats['total_referral_rewards']:.2f} USDT**"
     )
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -439,20 +450,27 @@ async def process_admin_recent_withdrawals(callback: types.CallbackQuery):
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
         
-    withdrawals = db.get_admin_recent_withdrawals(10)
-    text = "📄 **LAST 10 WITHDRAWALS**\n\n"
+    withdrawals = db.get_recent_paid_withdrawals(10)
+    text = "💸 **RECENT PAYMENTS**\n\n"
     if not withdrawals:
-        text += "No hay registros."
+        text += "No hay registros de pagos realizados."
     else:
-        for w in withdrawals:
-            date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
+        for i, w in enumerate(withdrawals, 1):
+            # Extract date part from paid_at
+            if w['paid_at']:
+                date_str = w['paid_at'].split(' ')[0] if isinstance(w['paid_at'], str) else w['paid_at'].strftime("%Y-%m-%d")
+            else:
+                date_str = "N/A"
+            
             display_user = f"@{w['username']} ({w['user_id']})" if w['username'] else f"{w['user_id']}"
+            
+            emoji_numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            num_label = emoji_numbers[i-1] if i <= 10 else f"{i}."
+            
             text += (
-                f"👤 User: `{display_user}`\n"
-                f"Amount: **{w['amount']} USDT**\n"
-                f"Status: {w['status'].capitalize()}\n"
-                f"Date: {date_str}\n"
-                "------------------\n"
+                f"{num_label} {display_user}\n"
+                f"Amount: {w['amount']} USDT\n"
+                f"Date: {date_str}\n\n"
             )
             
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
@@ -484,33 +502,87 @@ async def process_user_search_msg(message: types.Message, state: FSMContext):
                 f"Total Deposited: **{info['total_invested']:.2f} USDT**\n"
                 f"Total Withdrawn: **{info['total_withdrawn']:.2f} USDT**\n"
                 f"Active Investments: **{info['active_investments']}**\n\n"
-                f"👥 Referrals: {info['active_referrals']}"
+                f"👥 **Referidos:**\n"
+                f"Totales: {info['total_referrals']}\n"
+                f"Activos: {info['active_referrals']}\n"
+                f"Ganado: {info['referral_earnings']:.2f} USDT"
             )
             await message.answer(text, reply_markup=builders.admin_user_details_keyboard(info['id']), parse_mode="Markdown")
     except ValueError:
         await message.answer("❌ Por favor, envía un ID numérico válido.")
     await state.clear()
 
-@router.callback_query(F.data.startswith("admin_view_referrals:"))
-async def process_admin_view_referrals(callback: types.CallbackQuery):
+@router.callback_query(F.data == "admin_referral_mgmt")
+async def process_admin_referral_mgmt(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
     
-    parts = callback.data.split(":")
-    user_id = int(parts[1])
+    referrers = db.get_admin_referral_management()
+    text = "👥 **GESTIÓN DE REFERIDOS**\n\n"
     
-    referrals = db.get_active_referrals(user_id)
-    text = "👥 **ACTIVE REFERRALS**\n\n"
-    
-    if not referrals:
-        text += "No active referrals (with investments) found."
+    if not referrers:
+        text += "No hay usuarios con referidos aún."
     else:
-        for idx, r in enumerate(referrals, 1):
-            username = f"@{r['username']}" if r['username'] else f"{r['id']}"
-            text += f"{idx}️⃣ {username} ({r['id']})\nInvested: {r['total_invested']:.2f} USDT\n\n"
-    
+        for r in referrers:
+            text += (
+                f"👤 **{r['username'] or 'User'}** (`{r['id']}`)\n"
+                f"Total: {r['ref_total']} | Invertidos: {r['ref_invested']}\n"
+                f"Ganancias: ${r['ref_earnings']:.2f}\n"
+                f"Ver detalles: /ref_details_{r['id']}\n"
+                "------------------\n"
+            )
+            
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(F.text.startswith("/ref_details_"))
+async def process_admin_referrer_details(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        referrer_id = int(message.text.split("_")[2])
+        await show_referrer_details(message, referrer_id)
+    except:
+        await message.answer("ID de referidor inválido.")
+
+@router.callback_query(F.data.startswith("admin_view_referrals:"))
+async def process_admin_view_referrals_btn(callback: types.CallbackQuery):
+    referrer_id = int(callback.data.split(":")[1])
+    await show_referrer_details(callback, referrer_id)
+    await callback.answer()
+
+async def show_referrer_details(event, referrer_id, status_filter='all'):
+    details = db.get_referrer_details(referrer_id, status_filter)
+    user = db.get_user(referrer_id)
+    username = user['username'] if user else f"{referrer_id}"
+    
+    text = f"👥 **REFERIDOS DE: {username}**\n\n"
+    
+    if not details:
+        text += "No se encontraron referidos con este filtro."
+    else:
+        for d in details:
+            status = "✅ Invirtió" if d['invested'] else "❌ No invirtió"
+            text += (
+                f"👤 **{d['username'] or 'User'}** (`{d['referred_id']}`)\n"
+                f"📅 Registro: {d['created_at']}\n"
+                f"Estado: {status}\n"
+                "------------------\n"
+            )
+            
+    kb = builders.admin_referral_filters(referrer_id)
+    if isinstance(event, types.Message):
+        await event.answer(text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("ref_filter:"))
+async def process_ref_filter(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    referrer_id = int(parts[1])
+    status_filter = parts[2]
+    await show_referrer_details(callback, referrer_id, status_filter)
     await callback.answer()
 
 @router.callback_query(F.data == "admin_message_user")

@@ -7,7 +7,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 def main_menu():
     buttons = [
         [KeyboardButton(text="💰 Depositar USDT"), KeyboardButton(text="📊 Mi inversión")],
-        [KeyboardButton(text="💳 Retirar"), KeyboardButton(text="👥 Referidos")],
+        [KeyboardButton(text="💳 Retirar"), KeyboardButton(text="👥 Mis Referidos")],
         [KeyboardButton(text="🧮 Calculadora"), KeyboardButton(text="📈 Ranking")],
         [KeyboardButton(text="📊 Estadísticas"), KeyboardButton(text="💸 Pagos recientes")],
         [KeyboardButton(text="📜 Historial"), KeyboardButton(text="ℹ️ Información")],
@@ -53,10 +53,10 @@ def calculator_plans_keyboard():
         [InlineKeyboardButton(text="30 USDT → Total 45 USDT", callback_data="calc:Plan Básico:30:15")],
         [InlineKeyboardButton(text="50 USDT → Total 70 USDT", callback_data="calc:Plan Silver:50:20")],
         [InlineKeyboardButton(text="100 USDT → Total 135 USDT", callback_data="calc:Plan Gold:100:35")],
-        [InlineKeyboardButton(text="200 USDT → Total 160 USDT", callback_data="calc:Plan Platinum:200:-40")],
+        [InlineKeyboardButton(text="200 USDT → Total 255 USDT", callback_data="calc:Plan Platinum:200:55")],
         [InlineKeyboardButton(text="300 USDT → Total 375 USDT", callback_data="calc:Plan VIP:300:75")],
-        [InlineKeyboardButton(text="400 USDT → Total 500 USDT", callback_data="calc:Plan Elite:400:100")],
-        [InlineKeyboardButton(text="500 USDT → Total 600 USDT", callback_data="calc:Plan Master:500:100")],
+        [InlineKeyboardButton(text="400 USDT → Total 490 USDT", callback_data="calc:Plan Elite:400:90")],
+        [InlineKeyboardButton(text="500 USDT → Total 610 USDT", callback_data="calc:Plan Master:500:110")],
         [InlineKeyboardButton(text="🔙 Volver", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -76,10 +76,10 @@ def reinvestment_plans_keyboard():
         [InlineKeyboardButton(text="30 USDT → Total 45 USDT", callback_data="reinvest:Plan Básico:30:15")],
         [InlineKeyboardButton(text="50 USDT → Total 70 USDT", callback_data="reinvest:Plan Silver:50:20")],
         [InlineKeyboardButton(text="100 USDT → Total 135 USDT", callback_data="reinvest:Plan Gold:100:35")],
-        [InlineKeyboardButton(text="200 USDT → Total 160 USDT", callback_data="reinvest:Plan Platinum:200:-40")],
+        [InlineKeyboardButton(text="200 USDT → Total 255 USDT", callback_data="reinvest:Plan Platinum:200:55")],
         [InlineKeyboardButton(text="300 USDT → Total 375 USDT", callback_data="reinvest:Plan VIP:300:75")],
-        [InlineKeyboardButton(text="400 USDT → Total 500 USDT", callback_data="reinvest:Plan Elite:400:100")],
-        [InlineKeyboardButton(text="500 USDT → Total 600 USDT", callback_data="reinvest:Plan Master:500:100")],
+        [InlineKeyboardButton(text="400 USDT → Total 490 USDT", callback_data="reinvest:Plan Elite:400:90")],
+        [InlineKeyboardButton(text="500 USDT → Total 610 USDT", callback_data="reinvest:Plan Master:500:110")],
         [InlineKeyboardButton(text="🔙 Volver", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

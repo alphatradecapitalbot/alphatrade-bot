@@ -9,10 +9,11 @@ def get_admin_panel():
             [InlineKeyboardButton(text="4️⃣ 📊 Inversiones Activas", callback_data="admin_investments")],
             [InlineKeyboardButton(text="5️⃣ 📈 Estadísticas del Sistema", callback_data="admin_stats")],
             [InlineKeyboardButton(text="6️⃣ 🧾 Depósitos Recientes", callback_data="admin_recent_deposits")],
-            [InlineKeyboardButton(text="7️⃣ 🧾 Retiros Recientes", callback_data="admin_recent_withdrawals")],
+            [InlineKeyboardButton(text="7️⃣ 💸 Pagos Recientes", callback_data="admin_recent_withdrawals")],
             [InlineKeyboardButton(text="8️⃣ 🔍 Buscar Usuario", callback_data="admin_search_user")],
             [InlineKeyboardButton(text="9️⃣ ✉️ Enviar Mensaje a Usuario", callback_data="admin_message_user")],
-            [InlineKeyboardButton(text="🔟 📢 Broadcast a Todos", callback_data="admin_broadcast")]
+            [InlineKeyboardButton(text="🔟 📢 Broadcast a Todos", callback_data="admin_broadcast")],
+            [InlineKeyboardButton(text="👥 Gestión de Referidos", callback_data="admin_referral_mgmt")]
         ]
     )
 
@@ -50,5 +51,15 @@ def admin_back_button():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⬅️ Volver", callback_data="admin_main_back")]
+        ]
+    )
+
+def admin_referral_filters(referrer_id):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👁️ Ver todos", callback_data=f"ref_filter:{referrer_id}:all")],
+            [InlineKeyboardButton(text="✅ Solo los que invirtieron", callback_data=f"ref_filter:{referrer_id}:invested")],
+            [InlineKeyboardButton(text="❌ Solo los que NO invirtieron", callback_data=f"ref_filter:{referrer_id}:no_invested")],
+            [InlineKeyboardButton(text="⬅️ Volver", callback_data="admin_referral_mgmt")]
         ]
     )

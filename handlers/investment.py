@@ -20,9 +20,11 @@ def calculate_profit(amount):
     table = {
         30: (15, 45),
         50: (20, 70),
-        100: (50, 150),
-        200: (120, 320),
-        500: (350, 850)
+        100: (35, 135),
+        200: (55, 255),
+        300: (75, 375),
+        400: (90, 490),
+        500: (110, 610)
     }
     if amount in table:
         return table[amount]
@@ -62,18 +64,23 @@ async def cmd_investment(message: types.Message):
     )
     await message.answer(text, reply_markup=builders.back_to_menu_keyboard(), parse_mode="Markdown")
 
-@router.message(F.text == "👥 Referidos")
-async def cmd_referrals(message: types.Message, bot):
-    stats = db.get_user_stats(message.from_user.id)
-    bot_info = await bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+@router.message(F.text == "👥 Mis Referidos")
+async def cmd_referrals(message: types.Message):
+    stats = db.get_user_referral_advanced(message.from_user.id)
+    if not stats:
+        await message.answer("❌ Error al cargar estadísticas de referidos.")
+        return
+        
     text = (
         "🎁 **PROGRAMA DE REFERIDOS**\n\n"
-        "Invita amigos y gana comisión por cada inversión.\n\n"
+        "Invita amigos y gana comisión por cada inversión aprobada.\n\n"
         "Tu enlace de referido:\n\n"
-        f"`{ref_link}`\n\n"
-        f"Referidos: **{stats['referral_count']}**\n"
-        f"Ganancias: **{stats['referral_earnings']} USDT**"
+        f"`{stats['ref_link']}`\n\n"
+        "📊 **Estadísticas:**\n"
+        f"Referidos totales: **{stats['ref_total']}**\n"
+        f"Referidos que invirtieron: **{stats['ref_invested']}**\n"
+        f"Referidos sin inversión: **{stats['ref_no_invested']}**\n"
+        f"Ganado por referidos: **${stats['ref_earnings']:.2f}**"
     )
     await message.answer(text, parse_mode="Markdown")
 

@@ -20,42 +20,14 @@ class DepositStates(StatesGroup):
 async def cmd_deposit(message: types.Message, state: FSMContext):
     await state.clear()
     plans_text = (
-        "📊 **PLANES DE INVERSIÓN (24 HORAS)**\n\n"
-        "**Plan Básico**\n"
-        "Inversión: 30 USDT\n"
-        "Ganancia: 15 USDT\n"
-        "Total a recibir: 45 USDT\n"
-        "Duración: 24 horas\n\n"
-        "**Plan Silver**\n"
-        "Inversión: 50 USDT\n"
-        "Ganancia: 20 USDT\n"
-        "Total a recibir: 70 USDT\n"
-        "Duración: 24 horas\n\n"
-        "**Plan Gold**\n"
-        "Inversión: 100 USDT\n"
-        "Ganancia: 35 USDT\n"
-        "Total a recibir: 135 USDT\n"
-        "Duración: 24 horas\n\n"
-        "**Plan Platinum**\n"
-        "Inversión: 200 USDT\n"
-        "Ganancia: -40 USDT\n"
-        "Total a recibir: 160 USDT\n"
-        "Duración: 24 horas\n\n"
-        "**Plan VIP**\n"
-        "Inversión: 300 USDT\n"
-        "Ganancia: 75 USDT\n"
-        "Total a recibir: 375 USDT\n"
-        "Duración: 24 horas\n\n"
-        "**Plan Elite**\n"
-        "Inversión: 400 USDT\n"
-        "Ganancia: 100 USDT\n"
-        "Total a recibir: 500 USDT\n"
-        "Duración: 24 horas\n\n"
-        "**Plan Master**\n"
-        "Inversión: 500 USDT\n"
-        "Ganancia: 100 USDT\n"
-        "Total a recibir: 600 USDT\n"
-        "Duración: 24 horas"
+        "📊 **PLANES DE INVERSIÓN (24H)**\n\n"
+        "30 USDT → Total 45 USDT\n"
+        "50 USDT → Total 70 USDT\n"
+        "100 USDT → Total 135 USDT\n"
+        "200 USDT → Total 255 USDT\n"
+        "300 USDT → Total 375 USDT\n"
+        "400 USDT → Total 490 USDT\n"
+        "500 USDT → Total 610 USDT"
     )
     await message.answer(plans_text, reply_markup=builders.investment_plans_keyboard(), parse_mode="Markdown")
 
@@ -65,15 +37,19 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
     plan_name = parts[1]
     amount = float(parts[2])
     
+    if amount not in [30, 50, 100, 200, 300, 400, 500]:
+        await callback.answer("❌ Invalid investment amount.", show_alert=True)
+        return
+
     # Calculate profit and total return for storage
     plan_profits = {
         "Plan Básico": 15.0,
         "Plan Silver": 20.0,
         "Plan Gold": 35.0,
-        "Plan Platinum": -40.0,
+        "Plan Platinum": 55.0,
         "Plan VIP": 75.0,
-        "Plan Elite": 100.0,
-        "Plan Master": 100.0
+        "Plan Elite": 90.0,
+        "Plan Master": 110.0
     }
     profit = plan_profits.get(plan_name, 0.0)
     total_return = amount + profit

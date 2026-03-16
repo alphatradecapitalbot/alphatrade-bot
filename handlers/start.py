@@ -21,23 +21,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
             pass
     is_new_user = db.register_user(message.from_user.id, message.from_user.username, referral_id)
     
-    if is_new_user and referral_id:
-        # Grant fixed 0.30 USDT reward to referrer
-        reward = 0.30
-        db.add_referral_reward(referral_id, reward)
-        
-        # Notify Referrer
-        try:
-            ref_notification = (
-                "🎁 **NUEVO REFERIDO**\n\n"
-                f"Un nuevo usuario se ha unido con tu enlace.\n"
-                f"Usuario: @{message.from_user.username or 'N/A'}\n"
-                f"Recompensa: **{reward} USDT**"
-            )
-            await message.bot.send_message(referral_id, ref_notification, parse_mode="Markdown")
-        except Exception as e:
-            logger.error(f"Failed to notify referrer {referral_id}: {e}")
-    
     welcome_text = (
         "👋 **Bienvenido a AlphaTrade Capital**\n\n"
         "Sistema automático de inversión\n"

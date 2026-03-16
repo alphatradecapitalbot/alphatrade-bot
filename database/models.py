@@ -21,7 +21,26 @@ def init_db():
         referral_earnings REAL DEFAULT 0.0,
         active_investment BOOLEAN DEFAULT 0,
         total_invested REAL DEFAULT 0.0,
+        ref_by INTEGER,
+        ref_total INTEGER DEFAULT 0,
+        ref_invested INTEGER DEFAULT 0,
+        ref_earnings REAL DEFAULT 0.0,
         FOREIGN KEY (referral_id) REFERENCES users (id)
+    )
+    ''')
+    
+    # Referidos table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS referidos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        referrer_id INTEGER,
+        referred_id INTEGER,
+        username TEXT,
+        invested BOOLEAN DEFAULT 0,
+        reward_paid BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (referrer_id) REFERENCES users (id),
+        FOREIGN KEY (referred_id) REFERENCES users (id)
     )
     ''')
     
@@ -87,7 +106,11 @@ def init_db():
         ("withdrawals", "txid", "TEXT"),
         ("withdrawals", "paid_at", "DATETIME"),
         ("users", "referral_count", "INTEGER DEFAULT 0"),
-        ("users", "total_invested", "REAL DEFAULT 0.0")
+        ("users", "total_invested", "REAL DEFAULT 0.0"),
+        ("users", "ref_by", "INTEGER"),
+        ("users", "ref_total", "INTEGER DEFAULT 0"),
+        ("users", "ref_invested", "INTEGER DEFAULT 0"),
+        ("users", "ref_earnings", "REAL DEFAULT 0.0")
     ]
     for table, col, col_type in columns_to_add:
         try:
@@ -160,9 +183,20 @@ class Database:
         user = self.get_user(user_id)
         if not user:
             self.cursor.execute(
-                "INSERT INTO users (id, username, registration_date, referral_id) VALUES (?, ?, ?, ?)",
-                (user_id, username, datetime.now(), referral_id)
+                "INSERT INTO users (id, username, registration_date, referral_id, ref_by) VALUES (?, ?, ?, ?, ?)",
+                (user_id, username, datetime.now(), referral_id, referral_id)
             )
+            if referral_id:
+                # Add to referidos table
+                self.cursor.execute(
+                    "INSERT INTO referidos (referrer_id, referred_id, username) VALUES (?, ?, ?)",
+                    (referral_id, user_id, username)
+                )
+                # Increment ref_total for referrer
+                self.cursor.execute(
+                    "UPDATE users SET ref_total = ref_total + 1 WHERE id = ?",
+                    (referral_id,)
+                )
             self.conn.commit()
             return True
         else:
@@ -199,11 +233,37 @@ class Database:
             self.cursor.execute("SELECT user_id, amount FROM deposits WHERE id = ?", (deposit_id,))
             deposit = self.cursor.fetchone()
             if deposit:
+                user_id = deposit['user_id']
                 self.cursor.execute(
                     "UPDATE users SET total_invested = total_invested + ? WHERE id = ?",
-                    (deposit['amount'], deposit['user_id'])
+                    (deposit['amount'], user_id)
                 )
+                
+                # Check for referral reward
+                self.cursor.execute("SELECT referrer_id, reward_paid, invested FROM referidos WHERE referred_id = ?", (user_id,))
+                ref_record = self.cursor.fetchone()
+                if ref_record:
+                    # Mark as invested in referidos table anyway
+                    if not ref_record['invested']:
+                        self.cursor.execute("UPDATE referidos SET invested = 1 WHERE referred_id = ?", (user_id,))
+                        self.cursor.execute("UPDATE users SET ref_invested = ref_invested + 1 WHERE id = ?", (ref_record['referrer_id'],))
+                    
+                    # If reward not paid yet, pay it
+                    if not ref_record['reward_paid']:
+                        reward = 0.30
+                        # Pay reward
+                        self.cursor.execute(
+                            "UPDATE users SET balance = balance + ?, ref_earnings = ref_earnings + ? WHERE id = ?",
+                            (reward, reward, ref_record['referrer_id'])
+                        )
+                        self.cursor.execute("UPDATE referidos SET reward_paid = 1 WHERE referred_id = ?", (user_id,))
+                        
+                        # Return info for notification
+                        self.conn.commit()
+                        return {"type": "referral_reward", "referrer_id": ref_record['referrer_id'], "reward": reward}
+                        
         self.conn.commit()
+        return None
 
     def add_investment(self, user_id, amount, profit, total):
         from datetime import timedelta
@@ -255,23 +315,53 @@ class Database:
         except Exception:
             pass
 
-    def handle_referral(self, user_id, amount):
-        user = self.get_user(user_id)
-        if user and user['referral_id']:
-            from config import REFERRAL_PERCENTAGE
-            commission = amount * REFERRAL_PERCENTAGE
-            self.cursor.execute(
-                "UPDATE users SET referral_earnings = referral_earnings + ? WHERE id = ?",
-                (commission, user['referral_id'])
-            )
-            self.conn.commit()
+    def get_user_referral_advanced(self, user_id):
+        """Returns advanced referral stats for the user panel."""
+        self.cursor.execute("SELECT ref_total, ref_invested, ref_earnings FROM users WHERE id = ?", (user_id,))
+        user = self.cursor.fetchone()
+        
+        bot_info = self.cursor.execute("SELECT value FROM settings WHERE key = 'bot_username'").fetchone()
+        bot_username = bot_info['value'] if bot_info else "Bot"
+        ref_link = f"https://t.me/{bot_username}?start={user_id}"
+        
+        if not user:
+            return None
+            
+        return {
+            "ref_link": ref_link,
+            "ref_total": user['ref_total'],
+            "ref_invested": user['ref_invested'],
+            "ref_no_invested": user['ref_total'] - user['ref_invested'],
+            "ref_earnings": user['ref_earnings']
+        }
 
-    def add_referral_reward(self, referrer_id, reward_amount):
-        self.cursor.execute(
-            "UPDATE users SET referral_earnings = referral_earnings + ?, referral_count = referral_count + ? WHERE id = ?",
-            (reward_amount, 1, referrer_id)
-        )
-        self.conn.commit()
+    def get_admin_referral_management(self):
+        """Returns a list of all referrers with their aggregated stats."""
+        self.cursor.execute('''
+            SELECT id, username, ref_total, ref_invested, ref_earnings 
+            FROM users 
+            WHERE ref_total > 0 
+            ORDER BY ref_earnings DESC
+        ''')
+        return self.cursor.fetchall()
+
+    def get_referrer_details(self, referrer_id, status_filter=None):
+        """Returns detailed list of referrals for a specific user with filters."""
+        query = '''
+            SELECT r.*, u.active_investment 
+            FROM referidos r
+            LEFT JOIN users u ON r.referred_id = u.id
+            WHERE r.referrer_id = ?
+        '''
+        params = [referrer_id]
+        
+        if status_filter == 'invested':
+            query += " AND r.invested = 1"
+        elif status_filter == 'no_invested':
+            query += " AND r.invested = 0"
+            
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
 
     def get_user_stats(self, user_id):
         user = self.get_user(user_id)
@@ -281,8 +371,9 @@ class Database:
         return {
             "balance": user['balance'] if user else 0.0,
             "investment": investment,
-            "referral_count": user['referral_count'] if user else 0,
-            "referral_earnings": user['referral_earnings'] if user else 0.0
+            "referral_count": user['ref_total'] if user else 0,
+            "referral_earnings": user['ref_earnings'] if user else 0.0,
+            "ref_invested": user['ref_invested'] if user else 0
         }
 
     def get_all_stats(self):
@@ -290,8 +381,8 @@ class Database:
         total_users = self.cursor.fetchone()[0]
         self.cursor.execute("SELECT SUM(amount) FROM investments WHERE status = 'active'")
         total_invested = self.cursor.fetchone()[0] or 0.0
-        self.cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'paid'")
-        total_withdrawals = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'paid'")
+        total_withdrawals = self.cursor.fetchone()[0] or 0.0
         
         return {
             "total_users": total_users,
@@ -414,6 +505,17 @@ class Database:
         ''', (limit,))
         return self.cursor.fetchall()
 
+    def get_recent_paid_withdrawals(self, limit=10):
+        self.cursor.execute('''
+            SELECT w.user_id, w.amount, w.paid_at, u.username 
+            FROM withdrawals w 
+            JOIN users u ON w.user_id = u.id 
+            WHERE w.status = 'paid' 
+            ORDER BY w.paid_at DESC 
+            LIMIT ?
+        ''', (limit,))
+        return self.cursor.fetchall()
+
     def get_admin_user_sections(self):
         """Returns total users, active investors, and users without investment."""
         self.cursor.execute("SELECT COUNT(*) FROM users")
@@ -476,8 +578,9 @@ class Database:
             "total_invested": total_invested,
             "total_withdrawn": total_withdrawn,
             "active_investments": active_count,
-            "referral_earnings": user['referral_earnings'],
-            "active_referrals": active_referrals
+            "referral_earnings": user['ref_earnings'],
+            "active_referrals": user['ref_invested'],
+            "total_referrals": user['ref_total']
         }
 
     def get_active_referrals(self, user_id):
@@ -490,62 +593,28 @@ class Database:
         return self.cursor.fetchall()
 
     def get_admin_global_stats(self):
+        """Calculates global stats directly from the database to ensure persistence."""
         self.cursor.execute("SELECT COUNT(*) FROM users")
         total_users = self.cursor.fetchone()[0]
         
-        # total_capital → sum(investments.amount)
-        self.cursor.execute("SELECT SUM(amount) FROM investments")
-        total_capital = self.cursor.fetchone()[0] or 0.0
-        
-        # total_profit → sum(withdrawals.amount where status = paid)
-        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'paid'")
-        total_profit = self.cursor.fetchone()[0] or 0.0
-        
-        # active_investments → count(investments where status = active)
-        self.cursor.execute("SELECT COUNT(*) FROM investments WHERE status = 'active'")
-        active_investments = self.cursor.fetchone()[0]
-
-        # total_deposits → sum(deposits.amount where status = approved)
-        # In our DB 'confirmed' is the 'approved' status for deposits
         self.cursor.execute("SELECT SUM(amount) FROM deposits WHERE status = 'confirmed'")
-        total_deposits = self.cursor.fetchone()[0] or 0.0
+        total_deposited = self.cursor.fetchone()[0] or 0.0
 
-        # total_withdrawals → sum(withdrawals.amount where status = paid)
         self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE status = 'paid'")
-        total_withdrawals = self.cursor.fetchone()[0] or 0.0
+        total_withdrawn = self.cursor.fetchone()[0] or 0.0
 
-        # pending_deposits → count(deposits where status = pending)
-        self.cursor.execute("SELECT COUNT(*) FROM deposits WHERE status = 'pending'")
-        pending_deposits = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT SUM(amount) FROM investments")
+        total_invested = self.cursor.fetchone()[0] or 0.0
 
-        # pending_withdrawals → count(withdrawals where status = pending)
-        self.cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")
-        pending_withdrawals = self.cursor.fetchone()[0]
-        
-        # today_capital → sum(investments.amount where date = today)
-        self.cursor.execute("SELECT SUM(amount) FROM investments WHERE date(start_time) = date('now')")
-        today_capital = self.cursor.fetchone()[0] or 0.0
-
-        # total_referral_rewards
         self.cursor.execute("SELECT SUM(referral_earnings) FROM users")
         total_referral_rewards = self.cursor.fetchone()[0] or 0.0
-
-        # total_active_referrals
-        self.cursor.execute("SELECT COUNT(*) FROM users WHERE total_invested > 0 AND referral_id IS NOT NULL")
-        total_active_referrals = self.cursor.fetchone()[0]
         
         return {
             "total_users": total_users,
-            "total_capital": total_capital,
-            "total_profit": total_profit,
-            "active_investments": active_investments,
-            "total_deposits": total_deposits,
-            "total_withdrawals": total_withdrawals,
-            "pending_deposits": pending_deposits,
-            "pending_withdrawals": pending_withdrawals,
-            "today_capital": today_capital,
-            "total_referral_rewards": total_referral_rewards,
-            "total_active_referrals": total_active_referrals
+            "total_deposited": total_deposited,
+            "total_withdrawn": total_withdrawn,
+            "total_invested": total_invested,
+            "total_referral_rewards": total_referral_rewards
         }
 
     def get_withdraw(self, withdrawal_id):
