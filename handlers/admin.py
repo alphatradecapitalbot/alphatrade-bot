@@ -67,8 +67,9 @@ async def process_admin_deposits(callback: types.CallbackQuery):
         text += "No hay depósitos pendientes."
     else:
         for d in pending:
+            display_user = f"@{d['username']} ({d['user_id']})" if d['username'] else f"{d['user_id']}"
             d_text = (
-                f"User: {d['user_id']}\n"
+                f"User: {display_user}\n"
                 f"Amount: {d['amount']} USDT\n"
                 f"TXID: {d['tx_hash']}"
             )
@@ -93,7 +94,8 @@ async def process_admin_deposits(callback: types.CallbackQuery):
         text += "No hay depósitos verificados recientes."
     else:
         for d in deposits:
-            text += f"✅ User: {d['user_id']} — {d['amount']} USDT\n"
+            display_user = f"@{d['username']} ({d['user_id']})" if d.get('username') else f"{d['user_id']}"
+            text += f"✅ User: {display_user} — {d['amount']} USDT\n"
             
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -247,10 +249,11 @@ async def process_admin_investments(callback: types.CallbackQuery):
                 time_str = f"{hours}h" if hours > 0 else "Finalizando..."
             except:
                 time_str = "N/A"
-                
+            
+            display_user = f"@{i['username']} ({i['user_id']})" if i.get('username') else f"{i['user_id']}"
             text += (
                 "⚡ **ACTIVE INVESTMENT**\n"
-                f"User: `{i['user_id']}`\n"
+                f"User: `{display_user}`\n"
                 f"Capital: {i['amount']} USDT\n"
                 f"Profit: {i['profit']} USDT\n"
                 f"Ends in: {time_str}\n"
@@ -270,9 +273,10 @@ async def process_admin_withdrawals(callback: types.CallbackQuery):
         await callback.message.edit_text("✅ No hay solicitudes de retiro pendientes.", reply_markup=builders.admin_back_button())
     else:
         for w in withdrawals:
+            display_user = f"@{w['username']} ({w['user_id']})" if w.get('username') else f"{w['user_id']}"
             text = (
                 "💸 PENDING WITHDRAWALS\n\n"
-                f"User: {w['user_id']}\n"
+                f"User: {display_user}\n"
                 f"Amount: {w['amount']} USDT\n"
             )
             await callback.message.answer(text, reply_markup=builders.admin_withdraw_actions(w['id'], w['user_id']))
@@ -357,9 +361,9 @@ async def process_admin_recent_deposits(callback: types.CallbackQuery):
     else:
         for d in deposits:
             date_str = d['timestamp'].split('.')[0] if isinstance(d['timestamp'], str) else d['timestamp'].strftime("%Y-%m-%d")
+            display_user = f"@{d['username']} ({d['user_id']})" if d['username'] else f"{d['user_id']}"
             text += (
-                f"👤 ID: `{d['user_id']}`\n"
-                f"Username: @{d['username'] or 'N/A'}\n"
+                f"👤 User: `{display_user}`\n"
                 f"Amount: **{d['amount']} USDT**\n"
                 f"Status: {d['status'].capitalize()}\n"
                 f"Date: {date_str}\n"
@@ -382,9 +386,9 @@ async def process_admin_recent_withdrawals(callback: types.CallbackQuery):
     else:
         for w in withdrawals:
             date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
+            display_user = f"@{w['username']} ({w['user_id']})" if w['username'] else f"{w['user_id']}"
             text += (
-                f"👤 ID: `{w['user_id']}`\n"
-                f"Username: @{w['username'] or 'N/A'}\n"
+                f"👤 User: `{display_user}`\n"
                 f"Amount: **{w['amount']} USDT**\n"
                 f"Status: {w['status'].capitalize()}\n"
                 f"Date: {date_str}\n"

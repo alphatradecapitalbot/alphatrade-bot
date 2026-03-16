@@ -149,14 +149,23 @@ class Database:
         self.conn.commit()
 
     def register_user(self, user_id, username, referral_id=None):
-        if not self.get_user(user_id):
+        user = self.get_user(user_id)
+        if not user:
             self.cursor.execute(
                 "INSERT INTO users (id, username, registration_date, referral_id) VALUES (?, ?, ?, ?)",
                 (user_id, username, datetime.now(), referral_id)
             )
             self.conn.commit()
             return True
-        return False
+        else:
+            # Update username if it has changed
+            if user['username'] != username:
+                self.cursor.execute(
+                    "UPDATE users SET username = ? WHERE id = ?",
+                    (username, user_id)
+                )
+                self.conn.commit()
+            return False
 
     def get_user(self, user_id):
         self.cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))

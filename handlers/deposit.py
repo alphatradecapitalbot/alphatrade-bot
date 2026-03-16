@@ -155,11 +155,12 @@ async def process_photo(message: types.Message, state: FSMContext, bot: Bot):
         total_return=total_return
     )
     
+    display_user = f"@{message.from_user.username} ({message.from_user.id})" if message.from_user.username else f"{message.from_user.id}"
+    
     # Notify Admin
     admin_text = (
         "📥 NEW DEPOSIT REQUEST\n\n"
-        f"User ID: {message.from_user.id}\n"
-        f"Username: @{message.from_user.username or 'N/A'}\n\n"
+        f"User: {display_user}\n\n"
         f"Amount: {amount} USDT\n"
         f"TXID: {txid}\n\n"
         f"Status: Pending Approval"
