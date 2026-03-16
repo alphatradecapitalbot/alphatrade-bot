@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.models import Database
 from config import ADMIN_ID
-from keyboards import admin_menu as builders
+from keyboards import admin_panel as builders
 from services import admin_stats
 import asyncio
 
@@ -21,37 +21,57 @@ class AdminStates(StatesGroup):
     waiting_for_broadcast_msg = State()
     waiting_for_withdraw_txid = State()
 
+async def show_admin_panel(event: types.Message | types.CallbackQuery):
+    """Central function to show the admin panel."""
+    text = "⚙️ **ADMIN PANEL**\n\nSelecciona una opción:"
+    reply_markup = builders.get_admin_panel()
+    
+    if isinstance(event, types.Message):
+        await event.answer(text, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        try:
+            await event.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception:
+            # Fallback if text is the same or message can't be edited
+            await event.message.answer(text, reply_markup=reply_markup, parse_mode="Markdown")
+        await event.answer()
+
 @router.message(Command("admin"))
 async def cmd_admin(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         await message.answer("No tienes permiso para realizar esta acción.")
         return
-
-    text = "⚙️ **ADMIN PANEL**\n\nSelecciona una sección:"
-    await message.answer(text, reply_markup=builders.admin_main_menu(), parse_mode="Markdown")
+    await show_admin_panel(message)
 
 @router.callback_query(F.data == "admin_main_back")
 async def process_admin_back(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
-    text = "⚙️ **ADMIN PANEL**\n\nSelecciona una sección:"
-    await callback.message.edit_text(text, reply_markup=builders.admin_main_menu(), parse_mode="Markdown")
-    await callback.answer()
+    await show_admin_panel(callback)
 
 @router.callback_query(F.data == "admin_view_users")
 async def process_admin_users(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
-    info = admin_stats.get_user_breakdown()
-    text = (
-        "👥 **USERS SECTION**\n\n"
-        f"Users: {info['total']}\n"
-        f"Active Investments: {info['active']}\n"
-        f"Users without inv: {info['without_inv']}\n\n"
-        f"Total Capital: **{info['capital']:.2f} USDT**"
-    )
+    users = db.get_all_users()
+    text = "👥 **USER LIST**\n\n"
+    if not users:
+        text += "No hay usuarios registrados."
+    else:
+        for u in users[:20]: # Limit for performance
+            text += (
+                f"User ID: `{u['id']}`\n"
+                f"Username: @{u['username'] if u['username'] else 'Unknown'}\n"
+                f"Balance: {u['balance']:.2f} USDT\n"
+                f"Invested: {'Yes' if u['active_investment'] else 'No'}\n"
+                f"Referrals: {u['referral_count']}\n"
+                "------------------\n"
+            )
+        if len(users) > 20:
+            text += f"\n*Showing 20 of {len(users)} users. Use Search for specific IDs.*"
+
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
 
@@ -176,10 +196,9 @@ async def process_approve_deposit(callback: types.CallbackQuery):
 
         # Update Admin Message
         await callback.message.edit_text(
-            f"✅ DEPOSIT APPROVED\n\n"
-            f"User ID: {user_id}\n"
-            f"Amount: {capital} USDT\n"
-            f"Status: Approved",
+            f"✅ **DEPÓSITO APROBADO**\n\n"
+            f"User: {user_id}\n"
+            f"Amount: {capital} USDT",
             parse_mode="Markdown"
         )
         await callback.answer("Depósito aprobado")
@@ -218,11 +237,9 @@ async def process_reject_deposit(callback: types.CallbackQuery):
             logger.error(f"Failed to notify user {user_id} of rejection: {e}")
 
         # 3. Confirm to Admin
-        # Get deposit info for display if possible, or just use what we have
         await callback.message.edit_text(
-            f"❌ DEPOSIT REJECTED\n\n"
-            f"User ID: {user_id}\n"
-            f"Status: Rejected", 
+            f"❌ **DEPÓSITO RECHAZADO**\n\n"
+            f"User: {user_id}", 
             parse_mode="Markdown"
         )
         await callback.answer("Depósito rechazado")
@@ -253,11 +270,11 @@ async def process_admin_investments(callback: types.CallbackQuery):
             
             display_user = f"@{i['username']} ({i['user_id']})" if i.get('username') else f"{i['user_id']}"
             text += (
-                "⚡ **ACTIVE INVESTMENT**\n"
+                "📈 **ACTIVE INVESTMENT**\n"
                 f"User: `{display_user}`\n"
-                f"Capital: {i['amount']} USDT\n"
-                f"Profit: {i['profit']} USDT\n"
-                f"Ends in: {time_str}\n"
+                f"Capital: **{i['amount']} USDT**\n"
+                f"Profit: **{i['profit']} USDT**\n"
+                f"Time Remaining: {time_str}\n"
                 "------------------\n"
             )
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
@@ -276,9 +293,10 @@ async def process_admin_withdrawals(callback: types.CallbackQuery):
         for w in withdrawals:
             display_user = f"@{w['username']} ({w['user_id']})" if w.get('username') else f"{w['user_id']}"
             text = (
-                "💸 PENDING WITHDRAWALS\n\n"
+                "💸 **PENDING WITHDRAWAL**\n\n"
                 f"User: {display_user}\n"
                 f"Amount: {w['amount']} USDT\n"
+                f"Wallet: `{w['wallet']}`"
             )
             await callback.message.answer(text, reply_markup=builders.admin_withdraw_actions(w['id'], w['user_id']))
     await callback.answer()
@@ -304,7 +322,8 @@ async def approve_withdraw_handler(callback: types.CallbackQuery, state: FSMCont
         f"💰 **REGISTRAR PAGO**\n\n"
         f"Usuario: `{user_id}`\n"
         f"Monto: **{withdrawal['amount']} USDT**\n\n"
-        "Introduce la TXID del pago (o escribe **SKIP** para omitir):"
+        "Introduce la TXID del pago (o escribe **SKIP** para omitir):",
+        reply_markup=builders.admin_back_button()
     )
     await callback.answer()
 
@@ -340,12 +359,12 @@ async def process_withdraw_txid(message: types.Message, state: FSMContext):
 
     # 3. Confirm to Admin
     await message.answer(
-        "✅ **RETIRO MARCADO COMO PAGADO**\n\n"
-        f"Usuario: `{user_id}`\n"
-        f"TXID: `{txid or 'Sin TXID'}`\n"
-        "Las estadísticas han sido actualizadas.",
-        reply_markup=builders.admin_back_button()
+        "✅ **RETIRO COMPLETADO**\n\n"
+        f"User: {user_id}\n"
+        f"Amount: {amount} USDT\n"
+        f"TXID: `{txid or 'Manual/Interno'}`"
     )
+    await show_admin_panel(message)
     await state.clear()
 
 @router.callback_query(F.data.startswith("reject_withdraw:"))
@@ -368,7 +387,7 @@ async def reject_withdraw_handler(callback: types.CallbackQuery, bot):
         await bot.send_message(user_id, f"❌ Your withdrawal of {withdrawal['amount']} USDT was rejected. Funds returned.")
     except: pass
 
-    await callback.message.edit_text(f"❌ Withdrawal #{withdraw_id} rejected")
+    await callback.message.edit_text(f"❌ **RETIRO RECHAZADO**\n\nUser: {user_id}")
     await callback.answer("Rejected")
 
 @router.callback_query(F.data.in_(["admin_view_stats", "admin_stats"]))
@@ -378,16 +397,12 @@ async def process_admin_stats_call(callback: types.CallbackQuery):
         return
     stats = admin_stats.get_system_stats()
     text = (
-        "📊 **SYSTEM STATS**\n\n"
-        f"👤 Total Users: {stats['total_users']}\n\n"
-        f"💰 Total Capital: {stats['total_capital']:.2f} USDT\n"
-        f"📈 Total Profit Paid: {stats['total_profit']:.2f} USDT\n\n"
-        f"📊 Active Investments: {stats['active_investments']}\n\n"
-        f"🏦 Total Deposits: {stats['total_deposits']:.2f} USDT\n"
-        f"💸 Total Withdrawals: {stats['total_withdrawals']:.2f} USDT\n\n"
-        f"⏳ Pending Deposits: {stats['pending_deposits']}\n"
-        f"⏳ Pending Withdrawals: {stats['pending_withdrawals']}\n\n"
-        f"📅 Capital Invested Today: {stats['today_capital']:.2f} USDT"
+        "📈 **ESTADÍSTICAS DEL SISTEMA**\n\n"
+        f"👥 Total Users: **{stats['total_users']}**\n"
+        f"📊 Total Invested: **{stats['total_capital']:.2f} USDT**\n"
+        f"💸 Total Withdrawn: **{stats['total_withdrawals']:.2f} USDT**\n"
+        f"📥 Total Deposits: **{stats['total_deposits']:.2f} USDT**\n"
+        f"🎁 Total Referral Rewards: **{stats['total_referral_rewards']:.2f} USDT**"
     )
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -447,7 +462,7 @@ async def process_search_prompt_call(callback: types.CallbackQuery, state: FSMCo
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
-    await callback.message.answer("🔍 Envíame el **ID de Telegram** del usuario que deseas buscar:")
+    await callback.message.answer("🔍 Envíame el **ID de Telegram** del usuario que deseas buscar:", reply_markup=builders.admin_back_button())
     await state.set_state(AdminStates.waiting_for_search_id)
     await callback.answer()
 
@@ -460,14 +475,15 @@ async def process_user_search_msg(message: types.Message, state: FSMContext):
         user_id = int(message.text.strip())
         info = db.search_user_info(user_id)
         if not info:
-            await message.answer("❌ Usuario no encontrado.")
+            await message.answer("❌ Usuario no encontrado.", reply_markup=builders.admin_back_button())
         else:
             text = (
-                f"👤 **User ID: {info['id']}**\n\n"
-                f"Username: @{info['username'] or 'N/A'}\n"
-                f"Total invested: **{info['total_invested']:.2f} USDT**\n"
-                f"Total profit: **{info['total_profit']:.2f} USDT**\n"
-                f"Active investments: {info['active_investments']}"
+                f"👤 **User: @{info['username']}**\n"
+                f"User ID: `{info['id']}`\n"
+                f"Total Deposited: **{info['total_invested']:.2f} USDT**\n"
+                f"Total Withdrawn: **{info['total_withdrawn']:.2f} USDT**\n"
+                f"Active Investments: **{info['active_investments']}**\n"
+                f"Referral Earnings: **{info['referral_earnings']:.2f} USDT**"
             )
             await message.answer(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     except ValueError:
@@ -479,7 +495,7 @@ async def process_msg_user_prompt(callback: types.CallbackQuery, state: FSMConte
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
-    await callback.message.answer("✉ Enter User ID to send message:")
+    await callback.message.answer("✉ Enter User ID to send message:", reply_markup=builders.admin_back_button())
     await state.set_state(AdminStates.waiting_for_msg_user_id)
     await callback.answer()
 
@@ -491,7 +507,7 @@ async def process_msg_user_id(message: types.Message, state: FSMContext):
     try:
         user_id = int(message.text.strip())
         await state.update_data(target_user_id=user_id)
-        await message.answer("✍ Write the message you want to send:")
+        await message.answer("✍ Write the message you want to send:", reply_markup=builders.admin_back_button())
         await state.set_state(AdminStates.waiting_for_msg_text)
     except:
         await message.answer("Invalid ID.")
@@ -506,7 +522,8 @@ async def process_msg_user_text(message: types.Message, state: FSMContext, bot):
     user_id = data.get("target_user_id")
     try:
         await bot.send_message(user_id, f"✉ **Message from Admin:**\n\n{message.text}", parse_mode="Markdown")
-        await message.answer(f"✅ Message sent to {user_id}", reply_markup=builders.admin_back_button())
+        await message.answer(f"✅ Message sent to {user_id}")
+        await show_admin_panel(message)
     except:
         await message.answer(f"❌ Failed to send message to {user_id}")
     await state.clear()
@@ -516,7 +533,7 @@ async def process_broadcast_prompt(callback: types.CallbackQuery, state: FSMCont
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
-    await callback.message.answer("📢 Write the broadcast message for ALL users:")
+    await callback.message.answer("📢 Write the broadcast message for ALL users:", reply_markup=builders.admin_back_button())
     await state.set_state(AdminStates.waiting_for_broadcast_msg)
     await callback.answer()
 
@@ -534,5 +551,6 @@ async def process_broadcast_exec(message: types.Message, state: FSMContext, bot)
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await message.answer(f"✅ Broadcast finished. Sent to {count} users.", reply_markup=builders.admin_back_button())
+    await message.answer(f"✅ Broadcast finished. Sent to {count} users.")
+    await show_admin_panel(message)
     await state.clear()

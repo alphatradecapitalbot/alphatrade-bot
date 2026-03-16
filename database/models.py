@@ -450,6 +450,9 @@ class Database:
         self.cursor.execute("SELECT SUM(profit) FROM investments WHERE user_id = ? AND status = 'completed'", (user_id,))
         total_profit = self.cursor.fetchone()[0] or 0.0
         
+        self.cursor.execute("SELECT SUM(amount) FROM withdrawals WHERE user_id = ? AND status = 'paid'", (user_id,))
+        total_withdrawn = self.cursor.fetchone()[0] or 0.0
+        
         self.cursor.execute("SELECT COUNT(*) FROM investments WHERE user_id = ? AND status = 'active'", (user_id,))
         active_count = self.cursor.fetchone()[0]
         
@@ -457,8 +460,9 @@ class Database:
             "id": user_id,
             "username": user['username'],
             "total_invested": total_invested,
-            "total_profit": total_profit,
-            "active_investments": active_count
+            "total_withdrawn": total_withdrawn,
+            "active_investments": active_count,
+            "referral_earnings": user['referral_earnings']
         }
 
     def get_admin_global_stats(self):
@@ -497,6 +501,10 @@ class Database:
         # today_capital → sum(investments.amount where date = today)
         self.cursor.execute("SELECT SUM(amount) FROM investments WHERE date(start_time) = date('now')")
         today_capital = self.cursor.fetchone()[0] or 0.0
+
+        # total_referral_rewards
+        self.cursor.execute("SELECT SUM(referral_earnings) FROM users")
+        total_referral_rewards = self.cursor.fetchone()[0] or 0.0
         
         return {
             "total_users": total_users,
@@ -507,7 +515,8 @@ class Database:
             "total_withdrawals": total_withdrawals,
             "pending_deposits": pending_deposits,
             "pending_withdrawals": pending_withdrawals,
-            "today_capital": today_capital
+            "today_capital": today_capital,
+            "total_referral_rewards": total_referral_rewards
         }
 
     def get_withdraw(self, withdrawal_id):
