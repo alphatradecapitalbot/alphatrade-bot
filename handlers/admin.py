@@ -402,7 +402,8 @@ async def process_admin_stats_call(callback: types.CallbackQuery):
         f"📊 Total Invested: **{stats['total_capital']:.2f} USDT**\n"
         f"💸 Total Withdrawn: **{stats['total_withdrawals']:.2f} USDT**\n"
         f"📥 Total Deposits: **{stats['total_deposits']:.2f} USDT**\n"
-        f"🎁 Total Referral Rewards: **{stats['total_referral_rewards']:.2f} USDT**"
+        f"🎁 Total Referral Rewards: **{stats['total_referral_rewards']:.2f} USDT**\n"
+        f"👥 Total Active Referrals: **{stats['total_active_referrals']}**"
     )
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -478,17 +479,39 @@ async def process_user_search_msg(message: types.Message, state: FSMContext):
             await message.answer("❌ Usuario no encontrado.", reply_markup=builders.admin_back_button())
         else:
             text = (
-                f"👤 **User: @{info['username']}**\n"
-                f"User ID: `{info['id']}`\n"
+                f"👤 **USER PROFILE**\n\n"
+                f"User: @{info['username']} ({info['id']})\n"
                 f"Total Deposited: **{info['total_invested']:.2f} USDT**\n"
                 f"Total Withdrawn: **{info['total_withdrawn']:.2f} USDT**\n"
-                f"Active Investments: **{info['active_investments']}**\n"
-                f"Referral Earnings: **{info['referral_earnings']:.2f} USDT**"
+                f"Active Investments: **{info['active_investments']}**\n\n"
+                f"👥 Referrals: {info['active_referrals']}"
             )
-            await message.answer(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
+            await message.answer(text, reply_markup=builders.admin_user_details_keyboard(info['id']), parse_mode="Markdown")
     except ValueError:
         await message.answer("❌ Por favor, envía un ID numérico válido.")
     await state.clear()
+
+@router.callback_query(F.data.startswith("admin_view_referrals:"))
+async def process_admin_view_referrals(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
+        return
+    
+    parts = callback.data.split(":")
+    user_id = int(parts[1])
+    
+    referrals = db.get_active_referrals(user_id)
+    text = "👥 **ACTIVE REFERRALS**\n\n"
+    
+    if not referrals:
+        text += "No active referrals (with investments) found."
+    else:
+        for idx, r in enumerate(referrals, 1):
+            username = f"@{r['username']}" if r['username'] else f"{r['id']}"
+            text += f"{idx}️⃣ {username} ({r['id']})\nInvested: {r['total_invested']:.2f} USDT\n\n"
+    
+    await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
+    await callback.answer()
 
 @router.callback_query(F.data == "admin_message_user")
 async def process_msg_user_prompt(callback: types.CallbackQuery, state: FSMContext):

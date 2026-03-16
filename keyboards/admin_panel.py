@@ -38,6 +38,14 @@ def admin_withdraw_actions(withdraw_id, user_id):
         ]
     )
 
+def admin_user_details_keyboard(user_id):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👥 View Referrals", callback_data=f"admin_view_referrals:{user_id}")],
+            [InlineKeyboardButton(text="⬅️ Volver", callback_data="admin_main_back")]
+        ]
+    )
+
 def admin_back_button():
     return InlineKeyboardMarkup(
         inline_keyboard=[

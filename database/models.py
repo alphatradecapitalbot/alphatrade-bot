@@ -20,6 +20,7 @@ def init_db():
         balance REAL DEFAULT 0.0,
         referral_earnings REAL DEFAULT 0.0,
         active_investment BOOLEAN DEFAULT 0,
+        total_invested REAL DEFAULT 0.0,
         FOREIGN KEY (referral_id) REFERENCES users (id)
     )
     ''')
@@ -85,7 +86,8 @@ def init_db():
         ("investments", "plan", "TEXT"),
         ("withdrawals", "txid", "TEXT"),
         ("withdrawals", "paid_at", "DATETIME"),
-        ("users", "referral_count", "INTEGER DEFAULT 0")
+        ("users", "referral_count", "INTEGER DEFAULT 0"),
+        ("users", "total_invested", "REAL DEFAULT 0.0")
     ]
     for table, col, col_type in columns_to_add:
         try:
@@ -192,6 +194,15 @@ class Database:
 
     def update_deposit_status(self, deposit_id, status):
         self.cursor.execute("UPDATE deposits SET status = ? WHERE id = ?", (status, deposit_id))
+        if status == 'confirmed':
+            # Get deposit amount and user_id to update total_invested
+            self.cursor.execute("SELECT user_id, amount FROM deposits WHERE id = ?", (deposit_id,))
+            deposit = self.cursor.fetchone()
+            if deposit:
+                self.cursor.execute(
+                    "UPDATE users SET total_invested = total_invested + ? WHERE id = ?",
+                    (deposit['amount'], deposit['user_id'])
+                )
         self.conn.commit()
 
     def add_investment(self, user_id, amount, profit, total):
@@ -455,6 +466,9 @@ class Database:
         
         self.cursor.execute("SELECT COUNT(*) FROM investments WHERE user_id = ? AND status = 'active'", (user_id,))
         active_count = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM users WHERE referral_id = ? AND total_invested > 0", (user_id,))
+        active_referrals = self.cursor.fetchone()[0]
         
         return {
             "id": user_id,
@@ -462,8 +476,18 @@ class Database:
             "total_invested": total_invested,
             "total_withdrawn": total_withdrawn,
             "active_investments": active_count,
-            "referral_earnings": user['referral_earnings']
+            "referral_earnings": user['referral_earnings'],
+            "active_referrals": active_referrals
         }
+
+    def get_active_referrals(self, user_id):
+        """Returns list of referrals who have invested (>0)."""
+        self.cursor.execute('''
+            SELECT id, username, total_invested 
+            FROM users 
+            WHERE referral_id = ? AND total_invested > 0
+        ''', (user_id,))
+        return self.cursor.fetchall()
 
     def get_admin_global_stats(self):
         self.cursor.execute("SELECT COUNT(*) FROM users")
@@ -505,6 +529,10 @@ class Database:
         # total_referral_rewards
         self.cursor.execute("SELECT SUM(referral_earnings) FROM users")
         total_referral_rewards = self.cursor.fetchone()[0] or 0.0
+
+        # total_active_referrals
+        self.cursor.execute("SELECT COUNT(*) FROM users WHERE total_invested > 0 AND referral_id IS NOT NULL")
+        total_active_referrals = self.cursor.fetchone()[0]
         
         return {
             "total_users": total_users,
@@ -516,7 +544,8 @@ class Database:
             "pending_deposits": pending_deposits,
             "pending_withdrawals": pending_withdrawals,
             "today_capital": today_capital,
-            "total_referral_rewards": total_referral_rewards
+            "total_referral_rewards": total_referral_rewards,
+            "total_active_referrals": total_active_referrals
         }
 
     def get_withdraw(self, withdrawal_id):
