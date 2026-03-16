@@ -157,21 +157,28 @@ async def process_photo(message: types.Message, state: FSMContext, bot: Bot):
     
     # Notify Admin
     admin_text = (
-        "📥 **NUEVA SOLICITUD DE DEPÓSITO**\n\n"
-        f"Usuario: `{message.from_user.id}`\n\n"
-        f"Plan: **{plan}**\n\n"
-        f"Monto: **{amount} USDT**\n\n"
-        f"TXID:\n`{txid}`\n\n"
-        "Usa los botones para aprobar o rechazar."
+        "📥 NEW DEPOSIT REQUEST\n\n"
+        f"User ID: {message.from_user.id}\n"
+        f"Username: @{message.from_user.username or 'N/A'}\n\n"
+        f"Amount: {amount} USDT\n"
+        f"TXID: {txid}\n\n"
+        f"Status: Pending Approval"
     )
     
     try:
-        await bot.send_photo(
-            ADMIN_ID, 
-            photo.file_id, 
-            caption=admin_text, 
+        # First send the text message
+        await bot.send_message(
+            ADMIN_ID,
+            admin_text,
             reply_markup=builders.admin_deposit_actions(deposit_id, message.from_user.id),
             parse_mode="Markdown"
+        )
+        
+        # Then forward the screenshot
+        await bot.forward_message(
+            ADMIN_ID,
+            message.chat.id,
+            message.message_id
         )
     except Exception as e:
         logger.error(f"Error notifying admin for deposit {deposit_id}: {e}")

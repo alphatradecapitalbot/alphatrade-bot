@@ -4,9 +4,9 @@ def admin_main_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="👥 Usuarios", callback_data="admin_view_users")],
-            [InlineKeyboardButton(text="💰 Depósitos", callback_data="admin_deposits")],
+            [InlineKeyboardButton(text="📥 Pending Deposits", callback_data="admin_deposits")],
+            [InlineKeyboardButton(text="💸 Pending Withdrawals", callback_data="admin_withdrawals")],
             [InlineKeyboardButton(text="📈 Inversiones", callback_data="admin_investments")],
-            [InlineKeyboardButton(text="💸 Retiros", callback_data="admin_withdrawals")],
             [InlineKeyboardButton(text="📊 Estadísticas", callback_data="admin_stats")],
             [InlineKeyboardButton(text="📄 Ver depósitos recientes", callback_data="admin_recent_deposits")],
             [InlineKeyboardButton(text="📄 Ver retiros recientes", callback_data="admin_recent_withdrawals")],

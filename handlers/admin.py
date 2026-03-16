@@ -61,16 +61,18 @@ async def process_admin_deposits(callback: types.CallbackQuery):
         return
     
     pending = db.get_pending_deposits()
-    text = "📥 **DEPOSITS SECTION**\n\n"
+    text = "📥 PENDING DEPOSITS\n\n"
     
-    if pending:
-        text += "⏳ **PENDING DEPOSITS**\n"
+    if not pending:
+        text += "No hay depósitos pendientes."
+    else:
         for d in pending:
             d_text = (
-                f"👤 User: `{d['user_id']}`\n"
+                f"User: {d['user_id']}\n"
                 f"Amount: {d['amount']} USDT\n"
-                f"TXID: `{d['tx_hash']}`"
+                f"TXID: {d['tx_hash']}"
             )
+            # Check if there's a photo proof
             if d['proof_type'] == 'photo' and d['proof_data']:
                 try:
                     await callback.message.answer_photo(
@@ -82,15 +84,16 @@ async def process_admin_deposits(callback: types.CallbackQuery):
                     await callback.message.answer(d_text, reply_markup=builders.admin_deposit_actions(d['id'], d['user_id']))
             else:
                 await callback.message.answer(d_text, reply_markup=builders.admin_deposit_actions(d['id'], d['user_id']))
-        text += "\n"
+    
+    text += "\n"
 
     deposits = db.get_recent_verified_deposits(5)
-    text += "✨ **RECENT CONFIRMED**\n"
+    text += "✨ RECENT CONFIRMED\n"
     if not deposits:
         text += "No hay depósitos verificados recientes."
     else:
         for d in deposits:
-            text += f"✅ User: `{d['user_id']}` — **{d['amount']} USDT**\n"
+            text += f"✅ User: {d['user_id']} — {d['amount']} USDT\n"
             
     await callback.message.edit_text(text, reply_markup=builders.admin_back_button(), parse_mode="Markdown")
     await callback.answer()
@@ -170,7 +173,10 @@ async def process_approve_deposit(callback: types.CallbackQuery):
 
         # Update Admin Message
         await callback.message.edit_text(
-            "✅ **Depósito aprobado correctamente.**",
+            f"✅ DEPOSIT APPROVED\n\n"
+            f"User ID: {user_id}\n"
+            f"Amount: {capital} USDT\n"
+            f"Status: Approved",
             parse_mode="Markdown"
         )
         await callback.answer("Depósito aprobado")
@@ -209,7 +215,13 @@ async def process_reject_deposit(callback: types.CallbackQuery):
             logger.error(f"Failed to notify user {user_id} of rejection: {e}")
 
         # 3. Confirm to Admin
-        await callback.message.edit_text("❌ **Depósito rechazado correctamente.**", parse_mode="Markdown")
+        # Get deposit info for display if possible, or just use what we have
+        await callback.message.edit_text(
+            f"❌ DEPOSIT REJECTED\n\n"
+            f"User ID: {user_id}\n"
+            f"Status: Rejected", 
+            parse_mode="Markdown"
+        )
         await callback.answer("Depósito rechazado")
         
     except Exception as e:
@@ -253,16 +265,15 @@ async def process_admin_withdrawals(callback: types.CallbackQuery):
         await callback.answer("No tienes permiso para realizar esta acción.", show_alert=True)
         return
     withdrawals = db.get_pending_withdrawals()
-    text = "💸 **WITHDRAWALS SECTION**\n\n"
+    text = "💸 PENDING WITHDRAWALS\n\n"
     if not withdrawals:
         await callback.message.edit_text("✅ No hay solicitudes de retiro pendientes.", reply_markup=builders.admin_back_button())
     else:
         for w in withdrawals:
             text = (
-                "💸 **WITHDRAWAL REQUEST**\n\n"
-                f"User: `{w['user_id']}`\n"
-                f"Amount: **{w['amount']} USDT**\n"
-                f"Wallet: {w['wallet']}\n"
+                "💸 PENDING WITHDRAWALS\n\n"
+                f"User: {w['user_id']}\n"
+                f"Amount: {w['amount']} USDT\n"
             )
             await callback.message.answer(text, reply_markup=builders.admin_withdraw_actions(w['id'], w['user_id']))
     await callback.answer()

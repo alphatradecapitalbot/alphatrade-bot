@@ -191,21 +191,11 @@ class Database:
         self.conn.commit()
 
     def create_investment(self, user_id, capital, profit, start_time, end_time, status, plan=None):
-        active = self.get_active_investment(user_id)
-        if active and status == 'active':
-            new_amount = active['amount'] + capital
-            new_profit = active['profit'] + profit
-            new_total = active['total'] + capital + profit
-            self.cursor.execute(
-                "UPDATE investments SET plan = ?, amount = ?, profit = ?, total = ?, end_time = ? WHERE id = ?",
-                (plan or active['plan'], new_amount, new_profit, new_total, end_time, active['id'])
-            )
-        else:
-            total = capital + profit
-            self.cursor.execute(
-                "INSERT INTO investments (user_id, plan, amount, profit, total, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (user_id, plan, capital, profit, total, start_time, end_time, status)
-            )
+        total = capital + profit
+        self.cursor.execute(
+            "INSERT INTO investments (user_id, plan, amount, profit, total, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, plan, capital, profit, total, start_time, end_time, status)
+        )
         self.conn.commit()
 
     def get_investment_history(self, user_id):
