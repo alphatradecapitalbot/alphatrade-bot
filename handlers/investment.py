@@ -228,32 +228,44 @@ async def process_reinvest_choice(callback: types.CallbackQuery, state: FSMConte
     stats = db.get_user_stats(callback.from_user.id)
     balance = stats['balance']
     
+    if balance <= 0:
+        await callback.answer("❌ No tienes saldo para reinvertir.", show_alert=True)
+        return
+
     text = (
         "🔄 **REINVERSIÓN**\n\n"
         f"Tu saldo disponible es:\n**{balance} USDT**\n\n"
-        "Puedes reinvertir tu saldo en uno de los planes disponibles."
+        "¿Deseas reinvertir todo tu saldo?"
     )
-    await callback.message.edit_text(text, reply_markup=builders.reinvestment_plans_keyboard(), parse_mode="Markdown")
+    
+    buttons = [
+        [InlineKeyboardButton(text="✅ Reinvertir Ahora", callback_data=f"reinvest_all:{balance}")],
+        [InlineKeyboardButton(text="🔙 Cancelar", callback_data="back_to_menu")]
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
     await callback.answer()
 
-@router.callback_query(F.data.startswith("reinvest:"))
-async def process_reinvestment(callback: types.CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("reinvest_all:"))
+async def process_reinvestment_all(callback: types.CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
-    plan_name = parts[1]
-    amount = float(parts[2])
-    profit = float(parts[3])
+    amount = float(parts[1])
     
     stats = db.get_user_stats(callback.from_user.id)
     balance = stats['balance']
     
-    if balance < amount:
-        await callback.answer("❌ Saldo insuficiente para este plan.", show_alert=True)
+    if balance < amount or amount <= 0:
+        await callback.answer("❌ Error en el saldo.", show_alert=True)
         return
         
-    # 1. Subtract from balance
+    # 1. Calculate profit using percentage logic
+    profit, _ = calculate_profit(amount)
+    
+    # 2. Subtract from balance
     db.subtract_user_balance(callback.from_user.id, amount)
     
-    # 2. Create investment
+    # 3. Create investment
     db.create_investment(
         user_id=callback.from_user.id,
         capital=amount,
@@ -261,17 +273,16 @@ async def process_reinvestment(callback: types.CallbackQuery, state: FSMContext)
         start_time=datetime.now(),
         end_time=datetime.now() + timedelta(hours=24),
         status="active",
-        plan=plan_name
+        plan="Reinvest"
     )
+    db.set_user_active_investment(callback.from_user.id, True)
     
-    # 3. Success message
+    # 4. Success message
     success_text = (
         "✅ **REINVERSIÓN ACTIVADA**\n\n"
-        f"Has reinvertido:\n**{amount} USDT**\n\n"
-        f"Plan seleccionado:\n**{plan_name}**\n\n"
-        "Duración:\n**24 horas**\n\n"
-        "Puedes ver tu inversión activa en:\n\n"
-        "📊 **Mi inversión**"
+        f"Monto: **{amount} USDT**\n"
+        f"Beneficio estimado: **{profit} USDT**\n"
+        "Duración: **24 horas**"
     )
     await callback.message.edit_text(success_text, parse_mode="Markdown")
     await callback.answer("Reinversión exitosa")
@@ -283,15 +294,56 @@ async def process_with_wallet(message: types.Message, state: FSMContext):
     await state.set_state(WithdrawalStates.waiting_for_amount)
 
 @router.message(WithdrawalStates.waiting_for_amount)
-async def process_with_amount(message: types.Message, state: FSMContext):
+async def process_with_amount(message: types.Message, state: FSMContext, bot: Bot):
     try:
         amount = float(message.text)
+        if amount <= 0:
+            await message.answer("❌ **Monto inválido.**", parse_mode="Markdown")
+            return
+            
+        stats = db.get_user_stats(message.from_user.id)
+        if amount > stats['balance']:
+            await message.answer(f"❌ **Saldo insuficiente.** Tienes {stats['balance']} USDT.", parse_mode="Markdown")
+            return
+
         data = await state.get_data()
-        db.add_withdrawal(message.from_user.id, amount, data['wallet'])
-        await message.answer("✅ **Retiro solicitado correctamente.**", parse_mode="Markdown")
-    except:
-        await message.answer("❌ **Error al procesar el monto.**", parse_mode="Markdown")
-    await state.clear()
+        wallet = data['wallet']
+        
+        # 1. Store request
+        withdraw_id = db.add_withdrawal(message.from_user.id, amount, wallet)
+        db.subtract_user_balance(message.from_user.id, amount)
+        
+        # 2. Notify Admin
+        from config import ADMIN_ID
+        from keyboards.admin_panel import admin_withdraw_actions
+        
+        display_user = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
+        admin_text = (
+            "🏦 **Withdrawal request**\n\n"
+            f"User: {display_user}\n"
+            f"Amount: {amount} USDT\n"
+            f"Wallet: `{wallet}`"
+        )
+        
+        try:
+            await bot.send_message(
+                ADMIN_ID, 
+                admin_text, 
+                reply_markup=admin_withdraw_actions(withdraw_id, message.from_user.id),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error notifying admin of withdrawal: {e}")
+
+        await message.answer("✅ **Withdrawal request stored.**\n\nAdmin notified.", parse_mode="Markdown")
+        
+    except ValueError:
+        await message.answer("❌ **Por favor ingresa un número válido.**", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in withdrawal flow: {e}")
+        await message.answer("❌ **Error al procesar el retiro.**", parse_mode="Markdown")
+    finally:
+        await state.clear()
 
 @router.message(F.text == "📜 Historial")
 async def cmd_history(message: types.Message):
@@ -309,25 +361,25 @@ async def cmd_history(message: types.Message):
         text += "📥 **DEPÓSITOS**\n"
         for d in deposits:
             status_map = {
-                "pending": "⏳ Pendiente",
-                "confirmed": "✅ Aprobado",
-                "rejected": "❌ Rechazado"
+                "pending": "⏳ Pending",
+                "confirmed": "Confirmed",
+                "rejected": "❌ Rejected"
             }
             status_str = status_map.get(d['status'], d['status'])
             date_str = d['timestamp'].split('.')[0] if isinstance(d['timestamp'], str) else d['timestamp'].strftime("%Y-%m-%d")
-            text += f"• {d['amount']} USDT — {status_str} ({date_str})\n"
+            text += f"• {d['amount']} USDT — {status_str}\n"
         text += "\n"
         
     if withdrawals:
-        text += "📤 **RETIROS**\n"
+        text += "📤 **WITHDRAWALS**\n"
         for w in withdrawals:
             status_map = {
-                "pending": "⏳ Pendiente",
-                "paid": "✅ Pagado",
-                "rejected": "❌ Rechazado"
+                "pending": "Pending",
+                "paid": "Paid",
+                "rejected": "❌ Rejected"
             }
             status_str = status_map.get(w['status'], w['status'])
             date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
-            text += f"• {w['amount']} USDT — {status_str} ({date_str})\n"
+            text += f"• {w['amount']} USDT — {status_str}\n"
             
     await message.answer(text, parse_mode="Markdown")

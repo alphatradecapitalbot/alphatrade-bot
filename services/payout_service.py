@@ -26,13 +26,12 @@ class PayoutService:
                     
                     # Notify user
                     text = (
-                        "💸 **Inversión completada**\n\n"
-                        f"Capital: {payout['capital']} USDT\n"
-                        f"Ganancia: {payout['profit']} USDT\n\n"
-                        f"Total recibido: **{amount} USDT**"
+                        "✅ **Your investment has completed.**\n\n"
+                        f"Available balance: **{amount} USDT**"
                     )
+                    from keyboards.deposit_menu import reinvestment_options
                     try:
-                        await self.bot.send_message(user_id, text, parse_mode="Markdown")
+                        await self.bot.send_message(user_id, text, reply_markup=reinvestment_options(), parse_mode="Markdown")
                     except Exception as e:
                         logger.error(f"Failed to notify user {user_id} about payout: {e}")
                     

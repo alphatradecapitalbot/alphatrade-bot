@@ -334,7 +334,7 @@ async def approve_withdraw_handler(callback: types.CallbackQuery, state: FSMCont
         f"💰 **REGISTRAR PAGO**\n\n"
         f"Usuario: `{user_id}`\n"
         f"Monto: **{withdrawal['amount']} USDT**\n\n"
-        "Introduce la TXID del pago (o escribe **SKIP** para omitir):",
+        "Introduce la TXID del pago para confirmar:",
         reply_markup=builders.admin_back_button()
     )
     await callback.answer()
@@ -350,19 +350,15 @@ async def process_withdraw_txid(message: types.Message, state: FSMContext):
     amount = data['withdraw_amount']
     
     txid = message.text.strip()
-    if txid.upper() == "SKIP":
-        txid = ""
         
     # 1. Update DB
     db.update_withdraw_status(withdraw_id, "paid", txid)
     
     # 2. Notify User
     notification = (
-        "✅ **RETIRO COMPLETADO**\n\n"
-        f"Monto: **{amount} USDT**\n"
-        f"TXID: `{txid or 'Manual/Interno'}`\n"
-        "Estado: **Pagado**\n\n"
-        "Gracias por confiar en AlphaTrade Capital."
+        "✅ **Withdrawal completed**\n\n"
+        f"Amount: **{amount} USDT**\n"
+        f"TXID: `{txid}`"
     )
     try:
         await message.bot.send_message(user_id, notification, parse_mode="Markdown")
@@ -396,10 +392,10 @@ async def reject_withdraw_handler(callback: types.CallbackQuery, bot):
     db.update_withdraw_status(withdraw_id, "rejected")
     db.add_user_balance(user_id, withdrawal['amount'])
     try:
-        await bot.send_message(user_id, f"❌ Your withdrawal of {withdrawal['amount']} USDT was rejected. Funds returned.")
+        await bot.send_message(user_id, f"❌ **Withdrawal rejected.**\n\nYour withdrawal of {withdrawal['amount']} USDT was rejected. Funds have been returned to your balance.", parse_mode="Markdown")
     except: pass
 
-    await callback.message.edit_text(f"❌ **RETIRO RECHAZADO**\n\nUser: {user_id}")
+    await callback.message.edit_text(f"❌ **Withdrawal rejected**\n\nUser: {user_id}")
     await callback.answer("Rejected")
 
 @router.callback_query(F.data.in_(["admin_view_stats", "admin_stats"]))

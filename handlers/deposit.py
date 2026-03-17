@@ -41,18 +41,18 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
         await callback.answer("❌ Invalid investment amount.", show_alert=True)
         return
 
-    # Calculate profit and total return for storage
-    plan_profits = {
-        "Plan Básico": 15.0,
-        "Plan Silver": 20.0,
-        "Plan Gold": 35.0,
-        "Plan Platinum": 55.0,
-        "Plan VIP": 75.0,
-        "Plan Elite": 90.0,
-        "Plan Master": 110.0
+    # Profit calculation: profit = total_return - capital
+    plan_returns = {
+        30: 45,
+        50: 70,
+        100: 135,
+        200: 255,
+        300: 375,
+        400: 490,
+        500: 610
     }
-    profit = plan_profits.get(plan_name, 0.0)
-    total_return = amount + profit
+    total_return = plan_returns.get(int(amount))
+    profit = total_return - amount
     
     await state.update_data(
         deposit_amount=amount, 
@@ -62,13 +62,13 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
     )
     
     deposit_instr = (
-        "💳 **DEPÓSITO**\n\n"
-        f"Plan seleccionado:\n**{plan_name}**\n\n"
-        f"Monto a enviar:\n**{amount} USDT**\n\n"
-        "Dirección de depósito:\n\n"
+        "💳 **DEPÓSITO (AUTOMÁTICO)**\n\n"
+        f"Plan seleccionado: **{plan_name}**\n"
+        f"Monto a enviar: **{amount} USDT (TRC20)**\n\n"
+        "Enviar a la dirección:\n\n"
         f"`{USDT_TRC20_WALLET}`\n\n"
-        "Moneda de depósito:\n**USDT (TRC20)**\n\n"
-        "Red:\n**TRON (TRC20)**"
+        "⚠️ **IMPORTANTE:** Envía el monto exacto.\n\n"
+        "Luego de enviar, introduce el **TXID** de la transacción para confirmarla:"
     )
     
     await callback.message.edit_text(deposit_instr, parse_mode="Markdown")
@@ -76,100 +76,79 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
     await callback.answer()
 
 @router.message(DepositStates.waiting_for_txid)
-async def process_txid(message: types.Message, state: FSMContext):
+async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
     txid = message.text.strip()
     
+    # 1. Fraud protection check
     if db.is_txid_used(txid):
-        await message.answer("❌ Este TXID ya ha sido registrado anteriormente.")
+        await message.answer("❌ **Transaction already used.**", parse_mode="Markdown")
         return
 
-    await state.update_data(deposit_txid=txid)
-    
+    # 2. Automated verification
     data = await state.get_data()
     amount = data.get("deposit_amount")
-    
-    response_text = (
-        "✅ **TXID recibido correctamente.**\n\n"
-        "Ahora envía una **captura de pantalla del comprobante de tu depósito** para completar la verificación.\n\n"
-        "Resumen de tu depósito:\n\n"
-        "Monto enviado:\n"
-        f"**{amount} USDT**\n\n"
-        "Moneda:\n"
-        "**USDT (TRC20)**\n\n"
-        "Red:\n"
-        "**TRON (TRC20)**\n\n"
-        "Dirección de depósito:\n\n"
-        f"`{USDT_TRC20_WALLET}`\n\n"
-        "Una vez enviada la captura, tu depósito será revisado por el administrador.\n\n"
-        "Recibirás una notificación cuando sea aprobado."
-    )
-    
-    await message.answer(response_text, parse_mode="Markdown")
-    await state.set_state(DepositStates.waiting_for_photo)
-
-@router.message(DepositStates.waiting_for_photo, F.photo)
-async def process_photo(message: types.Message, state: FSMContext, bot: Bot):
-    photo = message.photo[-1]
-    data = await state.get_data()
-    amount = data.get("deposit_amount")
-    txid = data.get("deposit_txid")
-    plan = data.get("deposit_plan")
+    plan_name = data.get("deposit_plan")
     profit = data.get("deposit_profit")
     total_return = data.get("deposit_total_return")
     
-    # Register in DB
+    verifying_msg = await message.answer("⏳ **Verificando transacción...**", parse_mode="Markdown")
+    
+    from services.tron_service import verify_transaction
+    is_valid, report = verify_transaction(txid, amount)
+    
+    if not is_valid:
+        await verifying_msg.edit_text(f"❌ **Invalid transaction.**\n\nDetalle: {report}", parse_mode="Markdown")
+        return
+
+    # 3. Mark TXID as used
+    db.mark_txid_used(txid, message.from_user.id)
+    
+    # 4. Save deposit record
     deposit_id = db.add_deposit(
         user_id=message.from_user.id,
         amount=amount,
         network="TRC20",
         tx_hash=txid,
-        proof_type="photo",
-        proof_data=photo.file_id,
-        deposit_method="manual",
-        plan=plan,
+        proof_type="automated",
+        proof_data="tronscan_verified",
+        deposit_method="automated",
+        plan=plan_name,
         profit=profit,
         total_return=total_return
     )
-    
-    display_user = f"@{message.from_user.username} ({message.from_user.id})" if message.from_user.username else f"{message.from_user.id}"
-    
-    # Notify Admin
-    admin_text = (
-        "📥 NEW DEPOSIT REQUEST\n\n"
-        f"User: {display_user}\n\n"
-        f"Amount: {amount} USDT\n"
-        f"TXID: {txid}\n\n"
-        f"Status: Pending Approval"
-    )
-    
-    try:
-        # First send the text message
-        await bot.send_message(
-            ADMIN_ID,
-            admin_text,
-            reply_markup=builders.admin_deposit_actions(deposit_id, message.from_user.id),
-            parse_mode="Markdown"
-        )
-        
-        # Then forward the screenshot
-        await bot.forward_message(
-            ADMIN_ID,
-            message.chat.id,
-            message.message_id
-        )
-    except Exception as e:
-        logger.error(f"Error notifying admin for deposit {deposit_id}: {e}")
-        await bot.send_message(
-            ADMIN_ID, 
-            admin_text, 
-            reply_markup=builders.admin_deposit_actions(deposit_id, message.from_user.id), 
-            parse_mode="Markdown"
-        )
+    db.update_deposit_status(deposit_id, 'confirmed')
 
-    await message.answer(
-        "✅ **Información recibida**\n\n"
-        "Tu depósito está siendo revisado por un administrador.\n"
-        "Recibirás una notificación cuando sea aprobado.",
-        reply_markup=builders.main_menu()
+    # 5. Activate Investment
+    db.create_investment(
+        user_id=message.from_user.id,
+        capital=amount,
+        profit=profit,
+        start_time=datetime.now(),
+        end_time=datetime.now() + timedelta(hours=24),
+        status="active",
+        plan=plan_name
     )
+    db.set_user_active_investment(message.from_user.id, True)
+
+    # 6. User Success Message
+    user_success = (
+        "✅ **Deposit confirmed**\n\n"
+        f"Amount: {amount} USDT\n"
+        "Investment activated."
+    )
+    await verifying_msg.edit_text(user_success, parse_mode="Markdown")
+    
+    # 7. Admin Notification
+    display_user = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
+    admin_text = (
+        "💰 **New deposit**\n\n"
+        f"User: {display_user}\n"
+        f"Amount: {amount} USDT\n"
+        f"TXID: `{txid}`"
+    )
+    try:
+        await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error notifying admin: {e}")
+
     await state.clear()
