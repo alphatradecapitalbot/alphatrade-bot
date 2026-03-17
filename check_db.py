@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from aiogram import Bot
 
 db_path = "c:/Users/georg/Desktop/AlphaTrade Capital Bot/database/alphatrade.db"
 

@@ -1,11 +1,10 @@
-from aiogram import Router, F, types, Bot
-from aiogram import Bot
+from aiogram import Bot, F, Router, types
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.models import Database
 from keyboards import deposit_menu as builders
-from keyboards.deposit_menu import investment_plans_keyboard, main_menu, reinvestment_options, main_back_button
+from keyboards.deposit_menu import investment_plans_keyboard, main_menu, reinvestment_options
 from datetime import datetime, timedelta
 import asyncio
 

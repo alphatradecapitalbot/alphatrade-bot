@@ -2,6 +2,7 @@ import sqlite3
 import logging
 from datetime import datetime
 from config import DB_PATH
+from aiogram import Bot
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,4 @@
-from aiogram import Router, F, types, Bot
-from aiogram import Bot
+from aiogram import Bot, F, Router, types
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from database.models import Database

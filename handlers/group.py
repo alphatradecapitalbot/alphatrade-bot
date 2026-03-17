@@ -1,5 +1,4 @@
-from aiogram import Router, F, types, Bot
-from aiogram import Bot
+from aiogram import Bot, F, Router, types
 from aiogram.types import Message
 from database.models import Database
 from services.group_notifications import is_admin
