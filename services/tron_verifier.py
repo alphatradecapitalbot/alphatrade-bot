@@ -50,21 +50,29 @@ async def verify_trc20(txid: str, expected_amount: float, bot: Bot = None):
         symbol = token_info.get("symbol") or token_info.get("tokenAbbr")
         if symbol == "USDT":
             to_address = token_info.get("to_address")
-            if to_address == USDT_TRC20_WALLET:
-                try:
-                    raw_amount = int(token_info.get("amount_str") or token_info.get("amount", 0))
-                    decimals = int(token_info.get("decimals", 6))
-                    amount = raw_amount / (10 ** decimals)
-                except:
-                    continue
-                
-                if amount >= expected_amount:
-                    found_usdt = True
-                    break
-                else:
-                    return False, f"Monto insuficiente. Recibido: {amount} USDT."
+            
+            # Strict wallet validation
+            if to_address != USDT_TRC20_WALLET:
+                logger.warning(f"Invalid wallet detected: {to_address}")
+                return False, f"La billetera de destino no es la correcta."
+
+            print(f"Deposit detected to {to_address}")
+            logger.info(f"Deposit detected to {to_address}")
+            
+            try:
+                raw_amount = int(token_info.get("amount_str") or token_info.get("amount", 0))
+                decimals = int(token_info.get("decimals", 6))
+                amount = raw_amount / (10 ** decimals)
+            except:
+                continue
+            
+            if amount >= expected_amount:
+                found_usdt = True
+                break
+            else:
+                return False, f"Monto insuficiente. Recibido: {amount} USDT."
 
     if not found_usdt:
-        return False, "La transacción no es un depósito de USDT a la billetera correcta."
+        return False, "La transacción no es un depósito de USDT válido."
     
     return True, "Transacción verificada."
