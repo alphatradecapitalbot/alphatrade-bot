@@ -11,6 +11,12 @@ ADMIN_ID = 523694323
 ADMIN_PASSWORD = "AlphaTrade2026"
 
 # ==============================
+# ADMIN GROUP
+# ==============================
+GROUP_CHAT_ID = -5224217487
+ADMIN_IDS = [523694323, 8639162466]  # Add more admin IDs as needed
+
+# ==============================
 # DEPOSIT CONFIGURATION
 # ==============================
 DEPOSIT_NETWORKS = ["TRC20"]

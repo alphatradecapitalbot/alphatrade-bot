@@ -1,10 +1,11 @@
 from aiogram import Router, F, types, Bot
+from aiogram import Bot
 import logging
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.models import Database
 from keyboards import deposit_menu as builders
-from config import USDT_TRC20_WALLET, MIN_DEPOSIT, ADMIN_ID
+from config import USDT_TRC20_WALLET, MIN_DEPOSIT
 from datetime import datetime, timedelta
 
 router = Router()
@@ -41,7 +42,6 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
         await callback.answer("❌ Invalid investment amount.", show_alert=True)
         return
 
-    # Profit calculation: profit = total_return - capital
     plan_returns = {
         30: 45,
         50: 70,
@@ -77,35 +77,54 @@ async def process_plan_selection(callback: types.CallbackQuery, state: FSMContex
 
 @router.message(DepositStates.waiting_for_txid)
 async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
-    txid = message.text.strip()
-    
-    # 1. Fraud protection check
-    if db.is_txid_used(txid):
-        await message.answer("❌ **Transaction already used.**", parse_mode="Markdown")
-        return
+    from services.group_notifications import (
+        notify_new_deposit, notify_verifying,
+        notify_deposit_approved, notify_deposit_failed,
+        notify_security_alert
+    )
 
-    # 2. Automated verification
+    txid = message.text.strip()
+    username = message.from_user.username
+    user_id = message.from_user.id
     data = await state.get_data()
     amount = data.get("deposit_amount")
     plan_name = data.get("deposit_plan")
     profit = data.get("deposit_profit")
     total_return = data.get("deposit_total_return")
-    
-    verifying_msg = await message.answer("⏳ **Verificando transacción...**", parse_mode="Markdown")
-    
-    from services.tron_service import verify_transaction
-    is_valid, report = verify_transaction(txid, amount)
-    
-    if not is_valid:
-        await verifying_msg.edit_text(f"❌ **Invalid transaction.**\n\nDetalle: {report}", parse_mode="Markdown")
+
+    # 1. Fraud check — duplicated TXID
+    if db.is_txid_used(txid):
+        await message.answer("❌ **Esta transacción ya fue utilizada.**", parse_mode="Markdown")
+        await notify_security_alert(
+            bot, alert_type="TXID Duplicado",
+            username=username, user_id=user_id,
+            detail=f"TXID: {txid}"
+        )
         return
 
-    # 3. Mark TXID as used
-    db.mark_txid_used(txid, message.from_user.id)
-    
-    # 4. Save deposit record
+    # 2. Notify group: new deposit received
+    await notify_new_deposit(bot, username, user_id, amount, plan_name, txid)
+
+    # 3. Notify group: verifying
+    verifying_msg = await message.answer("⏳ **Verificando transacción...**", parse_mode="Markdown")
+    await notify_verifying(bot, username, user_id)
+
+    # 4. Auto-verify with TronScan
+    from services.tron_verifier import verify_trc20
+    is_valid, report = await verify_trc20(txid, amount, bot)
+
+    if not is_valid:
+        await verifying_msg.edit_text(
+            f"❌ **Transacción inválida.**\n\nDetalle: {report}",
+            parse_mode="Markdown"
+        )
+        await notify_deposit_failed(bot, username, user_id, txid, report)
+        return
+
+    # 5. Mark TXID used & save deposit
+    db.mark_txid_used(txid, user_id)
     deposit_id = db.add_deposit(
-        user_id=message.from_user.id,
+        user_id=user_id,
         amount=amount,
         network="TRC20",
         tx_hash=txid,
@@ -116,11 +135,11 @@ async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
         profit=profit,
         total_return=total_return
     )
-    db.update_deposit_status(deposit_id, 'confirmed')
+    db.update_deposit_status(deposit_id, "confirmed")
 
-    # 5. Activate Investment
+    # 6. Activate investment automatically
     db.create_investment(
-        user_id=message.from_user.id,
+        user_id=user_id,
         capital=amount,
         profit=profit,
         start_time=datetime.now(),
@@ -128,27 +147,18 @@ async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
         status="active",
         plan=plan_name
     )
-    db.set_user_active_investment(message.from_user.id, True)
+    db.set_user_active_investment(user_id, True)
 
-    # 6. User Success Message
-    user_success = (
-        "✅ **Deposit confirmed**\n\n"
-        f"Amount: {amount} USDT\n"
-        "Investment activated."
+    # 7. Confirm to user
+    await verifying_msg.edit_text(
+        "✅ **Depósito confirmado**\n\n"
+        f"Monto: **{amount} USDT**\n"
+        f"Plan: **{plan_name}**\n\n"
+        "Inversión activada. Recibirás tus ganancias en 24 horas.",
+        parse_mode="Markdown"
     )
-    await verifying_msg.edit_text(user_success, parse_mode="Markdown")
-    
-    # 7. Admin Notification
-    display_user = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
-    admin_text = (
-        "💰 **New deposit**\n\n"
-        f"User: {display_user}\n"
-        f"Amount: {amount} USDT\n"
-        f"TXID: `{txid}`"
-    )
-    try:
-        await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error notifying admin: {e}")
+
+    # 8. Notify group: deposit approved
+    await notify_deposit_approved(bot, username, user_id, amount, plan_name)
 
     await state.clear()

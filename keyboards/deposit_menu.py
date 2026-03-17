@@ -9,8 +9,8 @@ def main_menu():
         [KeyboardButton(text="💰 Depositar USDT"), KeyboardButton(text="📊 Mi inversión")],
         [KeyboardButton(text="💳 Retirar"), KeyboardButton(text="👥 Mis Referidos")],
         [KeyboardButton(text="🧮 Calculadora"), KeyboardButton(text="📈 Ranking")],
-        [KeyboardButton(text="📊 Estadísticas"), KeyboardButton(text="💸 Pagos recientes")],
-        [KeyboardButton(text="📜 Historial"), KeyboardButton(text="ℹ️ Información")],
+        [KeyboardButton(text="📊 Estadísticas")],
+        [KeyboardButton(text="ℹ️ Información")],
         [KeyboardButton(text="📞 Soporte"), KeyboardButton(text="🎥 Videos")],
         [KeyboardButton(text="🔄 Reiniciar")]
     ]

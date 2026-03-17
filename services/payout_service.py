@@ -35,19 +35,18 @@ class PayoutService:
                     except Exception as e:
                         logger.error(f"Failed to notify user {user_id} about payout: {e}")
                     
-                    # Notify Admin
-                    from config import ADMIN_ID
-                    admin_text = (
-                        f"✅ **PAGO REALIZADO**\n\n"
-                        f"Usuario: `{user_id}`\n"
-                        f"Capital: {payout['capital']} USDT\n"
-                        f"Profit: {payout['profit']} USDT\n"
-                        f"Total paid: **{amount} USDT**"
-                    )
                     try:
                         await self.bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
                     except Exception as e:
                         logger.error(f"Failed to notify admin about payout for user {user_id}: {e}")
+
+                    # 3. Notify group: System Log
+                    from services.group_notifications import notify_system_log
+                    await notify_system_log(
+                        bot=self.bot,
+                        event="Pago de Inversión",
+                        detail=f"Usuario: {user_id}\nMonto: {amount} USDT\nID Inv: {inv_id}"
+                    )
                 
             except Exception as e:
                 logger.error(f"Error in Payout Service: {e}")

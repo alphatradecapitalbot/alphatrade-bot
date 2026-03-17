@@ -1,4 +1,5 @@
-from aiogram import Router, F, types
+from aiogram import Router, F, types, Bot
+from aiogram import Bot
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from database.models import Database
@@ -8,7 +9,7 @@ router = Router()
 db = Database()
 
 @router.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
+async def cmd_start(message: types.Message, state: FSMContext, bot: Bot):
     await state.clear()
     args = message.text.split()
     referral_id = None
@@ -20,7 +21,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
         except:
             pass
     is_new_user = db.register_user(message.from_user.id, message.from_user.username, referral_id)
-    
+
+    # Notify group on new user registration
+    if is_new_user:
+        from services.group_notifications import notify_new_user
+        await notify_new_user(bot, message.from_user.username, message.from_user.id)
+
     welcome_text = (
         "👋 **Bienvenido a AlphaTrade Capital**\n\n"
         "Sistema automático de inversión\n"

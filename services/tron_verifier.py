@@ -1,58 +1,70 @@
 import aiohttp
 import logging
-from config import TRC20_WALLET, MIN_DEPOSIT, TRONSCAN_API
+from aiogram import Bot
+from config import USDT_TRC20_WALLET, MIN_DEPOSIT, TRONSCAN_API
 
 logger = logging.getLogger(__name__)
 
-USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
-
-async def verify_trc20(txid: str):
+async def verify_trc20(txid: str, expected_amount: float, bot: Bot = None):
     """
     Verify a TRC20 USDT transaction via TronScan API.
-    
-    Returns:
-        (True, amount_float)  — if valid
-        (False, error_string) — if invalid
     """
-    url = f"{TRONSCAN_API}?hash={txid.strip()}"
+    url = f"{TRONSCAN_API}"
+    params = {"hash": txid.strip()}
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status != 200:
+                    if bot:
+                        from services.group_notifications import notify_system_log
+                        await notify_system_log(bot, "API Error", f"TronScan returned status {resp.status}")
                     return False, "Error al conectar con TronScan."
                 data = await resp.json()
     except Exception as e:
         logger.error(f"TronScan request error: {e}")
         return False, "No se pudo conectar con la red TRON."
     
-    # Extract token transfer info
-    token_info = data.get("tokenTransferInfo")
-    
-    if not token_info:
-        return False, "Transacción no válida o no es una transferencia de tokens."
+    if not data or "contractRet" not in data:
+        return False, "Transacción no encontrada."
 
-    # Check it's USDT
-    if token_info.get("tokenAbbr") != "USDT":
-        return False, "El token recibido no es USDT TRC20."
-
-    # Check receiver address
-    if token_info.get("to_address") != TRC20_WALLET:
-        return False, "La dirección de destino no coincide con nuestra wallet."
-    
-    # Must be successful
     if data.get("contractRet") != "SUCCESS":
-        return False, f"La transacción no fue exitosa: {data.get('contractRet')}"
+        return False, "La transacción no fue exitosa."
 
-    # Extract amount
-    try:
-        raw_amount = int(token_info.get("amount_str", "0"))
-        amount = raw_amount / 1_000_000
-    except:
-        return False, "Error al procesar el monto de la transacción."
+    if not data.get("confirmed"):
+        return False, "La transacción aún no tiene confirmaciones suficientes."
+
+    # Extract token transfer info
+    token_info_list = data.get("trc20TransferInfo", [])
     
-    if amount < MIN_DEPOSIT:
-        return False, f"El monto (${amount}) es menor al mínimo requerido (${MIN_DEPOSIT})."
+    if not token_info_list:
+        # Fallback to tokenTransferInfo if trc20TransferInfo is missing
+        backup_info = data.get("tokenTransferInfo")
+        if backup_info:
+            token_info_list = [backup_info]
+        else:
+            return False, "No se encontró transferencia de tokens TRC20."
+
+    found_usdt = False
+    for token_info in token_info_list:
+        symbol = token_info.get("symbol") or token_info.get("tokenAbbr")
+        if symbol == "USDT":
+            to_address = token_info.get("to_address")
+            if to_address == USDT_TRC20_WALLET:
+                try:
+                    raw_amount = int(token_info.get("amount_str") or token_info.get("amount", 0))
+                    decimals = int(token_info.get("decimals", 6))
+                    amount = raw_amount / (10 ** decimals)
+                except:
+                    continue
+                
+                if amount >= expected_amount:
+                    found_usdt = True
+                    break
+                else:
+                    return False, f"Monto insuficiente. Recibido: {amount} USDT."
+
+    if not found_usdt:
+        return False, "La transacción no es un depósito de USDT a la billetera correcta."
     
-    logger.info(f"TRC20 TX verified: {txid} — {amount} USDT")
-    return True, round(amount, 2)
+    return True, "Transacción verificada."

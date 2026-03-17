@@ -1,10 +1,13 @@
-from aiogram import Router, F, types
+from aiogram import Router, F, types, Bot
+from aiogram import Bot
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.models import Database
 from keyboards import deposit_menu as builders
+from keyboards.deposit_menu import investment_plans_keyboard, main_menu, reinvestment_options, main_back_button
 from datetime import datetime, timedelta
+import asyncio
 
 router = Router()
 db = Database()
@@ -34,7 +37,22 @@ def calculate_profit(amount):
 
 
 @router.message(F.text == "📊 Mi inversión")
-async def cmd_investment(message: types.Message):
+async def cmd_my_investment(message: types.Message, bot: Bot):
+    # Process matured investments on-demand
+    payouts = db.process_matured_investments()
+    for payout in payouts:
+        # Clear active investment flag
+        db.set_user_active_investment(payout['user_id'], False)
+        # Notify user (if it's the current user, they will see the update in the text below, 
+        # but we notify everyone whose investment finished)
+        text_completed = (
+            "✅ **Your investment has completed.**\n\n"
+            f"Available balance: **{payout['amount']} USDT**"
+        )
+        try:
+            await bot.send_message(payout['user_id'], text_completed, reply_markup=reinvestment_options(), parse_mode="Markdown")
+        except: pass
+
     inv = db.get_active_investment(message.from_user.id)
     
     if not inv:
@@ -168,16 +186,19 @@ async def cmd_stats(message: types.Message):
     )
     await message.answer(text, parse_mode="Markdown")
 
-@router.message(F.text == "💸 Pagos recientes")
-async def cmd_recent_payments(message: types.Message):
-    history = db.get_operation_history()
-    text = "💸 **Pagos recientes**\n\n"
-    if not history:
-        text += "Sin registros."
-    else:
-        for h in history:
-            text += f"🔹 {h['title']} - {h['result']}\n"
-    await message.answer(text, parse_mode="Markdown")
+# @router.message(F.text == "💸 Pagos recientes")
+# async def cmd_recent_payouts(message: types.Message):
+#     payouts = db.get_recent_payouts(10)
+#     
+#     text = "💸 **Pagos recientes**\n\n"
+#     if not payouts:
+#         text += "No hay pagos registrados aún."
+#     else:
+#         for p in payouts:
+#             status = "✅ Pagado" if p['status'] == 'paid' else "⏳ Procesando"
+#             text += f"• {p['amount']} USDT — {status}\n"
+#             
+#     await message.answer(text, parse_mode="Markdown")
 
 @router.message(F.text == "🧮 Calculadora")
 async def cmd_calc(message: types.Message, state: FSMContext):
@@ -287,6 +308,16 @@ async def process_reinvestment_all(callback: types.CallbackQuery, state: FSMCont
     await callback.message.edit_text(success_text, parse_mode="Markdown")
     await callback.answer("Reinversión exitosa")
 
+    # 5. Notify group: Reinvestment
+    from services.group_notifications import notify_reinvestment
+    await notify_reinvestment(
+        bot=callback.bot,
+        username=callback.from_user.username,
+        user_id=callback.from_user.id,
+        amount=amount,
+        plan="Reinvest"
+    )
+
 @router.message(WithdrawalStates.waiting_for_wallet)
 async def process_with_wallet(message: types.Message, state: FSMContext):
     await state.update_data(wallet=message.text)
@@ -313,7 +344,7 @@ async def process_with_amount(message: types.Message, state: FSMContext, bot: Bo
         withdraw_id = db.add_withdrawal(message.from_user.id, amount, wallet)
         db.subtract_user_balance(message.from_user.id, amount)
         
-        # 2. Notify Admin
+        # 2. Notify Admin DM (kept for backward compatibility)
         from config import ADMIN_ID
         from keyboards.admin_panel import admin_withdraw_actions
         
@@ -335,7 +366,17 @@ async def process_with_amount(message: types.Message, state: FSMContext, bot: Bo
         except Exception as e:
             logger.error(f"Error notifying admin of withdrawal: {e}")
 
-        await message.answer("✅ **Withdrawal request stored.**\n\nAdmin notified.", parse_mode="Markdown")
+        # 3. Notify admin GROUP with group buttons
+        from services.group_notifications import notify_withdrawal_request
+        await notify_withdrawal_request(
+            bot=bot,
+            username=message.from_user.username,
+            user_id=message.from_user.id,
+            amount=amount,
+            wallet=wallet
+        )
+
+        await message.answer("✅ **Solicitud de retiro enviada.**\n\nEl administrador la procesará pronto.", parse_mode="Markdown")
         
     except ValueError:
         await message.answer("❌ **Por favor ingresa un número válido.**", parse_mode="Markdown")
@@ -345,41 +386,41 @@ async def process_with_amount(message: types.Message, state: FSMContext, bot: Bo
     finally:
         await state.clear()
 
-@router.message(F.text == "📜 Historial")
-async def cmd_history(message: types.Message):
-    user_id = message.from_user.id
-    deposits = db.get_user_deposits(user_id)
-    withdrawals = db.get_user_withdrawals(user_id)
-    
-    if not deposits and not withdrawals:
-        await message.answer("📜 **No tienes movimientos registrados.**", parse_mode="Markdown")
-        return
-        
-    text = "📜 **HISTORIAL DE OPERACIONES**\n\n"
-    
-    if deposits:
-        text += "📥 **DEPÓSITOS**\n"
-        for d in deposits:
-            status_map = {
-                "pending": "⏳ Pending",
-                "confirmed": "Confirmed",
-                "rejected": "❌ Rejected"
-            }
-            status_str = status_map.get(d['status'], d['status'])
-            date_str = d['timestamp'].split('.')[0] if isinstance(d['timestamp'], str) else d['timestamp'].strftime("%Y-%m-%d")
-            text += f"• {d['amount']} USDT — {status_str}\n"
-        text += "\n"
-        
-    if withdrawals:
-        text += "📤 **WITHDRAWALS**\n"
-        for w in withdrawals:
-            status_map = {
-                "pending": "Pending",
-                "paid": "Paid",
-                "rejected": "❌ Rejected"
-            }
-            status_str = status_map.get(w['status'], w['status'])
-            date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
-            text += f"• {w['amount']} USDT — {status_str}\n"
-            
-    await message.answer(text, parse_mode="Markdown")
+# @router.message(F.text == "📜 Historial")
+# async def cmd_history(message: types.Message):
+#     user_id = message.from_user.id
+#     deposits = db.get_user_deposits(user_id)
+#     withdrawals = db.get_user_withdrawals(user_id)
+#     
+#     if not deposits and not withdrawals:
+#         await message.answer("📜 **No tienes movimientos registrados.**", parse_mode="Markdown")
+#         return
+#         
+#     text = "📜 **HISTORIAL DE OPERACIONES**\n\n"
+#     
+#     if deposits:
+#         text += "📥 **DEPÓSITOS**\n"
+#         for d in deposits:
+#             status_map = {
+#                 "pending": "⏳ Pending",
+#                 "confirmed": "Confirmed",
+#                 "rejected": "❌ Rejected"
+#             }
+#             status_str = status_map.get(d['status'], d['status'])
+#             date_str = d['timestamp'].split('.')[0] if isinstance(d['timestamp'], str) else d['timestamp'].strftime("%Y-%m-%d")
+#             text += f"• {d['amount']} USDT — {status_str}\n"
+#         text += "\n"
+#         
+#     if withdrawals:
+#         text += "📤 **WITHDRAWALS**\n"
+#         for w in withdrawals:
+#             status_map = {
+#                 "pending": "Pending",
+#                 "paid": "Paid",
+#                 "rejected": "❌ Rejected"
+#             }
+#             status_str = status_map.get(w['status'], w['status'])
+#             date_str = w['timestamp'].split('.')[0] if isinstance(w['timestamp'], str) else w['timestamp'].strftime("%Y-%m-%d")
+#             text += f"• {w['amount']} USDT — {status_str}\n"
+#             
+#     await message.answer(text, parse_mode="Markdown")

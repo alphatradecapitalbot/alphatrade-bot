@@ -40,12 +40,11 @@ async def main():
     dp.include_router(group.router)
 
     # Payout Service
-    from services.payout_service import PayoutService
-    payout_service = PayoutService(bot)
-    asyncio.create_task(payout_service.start())
+    # from services.payout_service import PayoutService
+    # payout_service = PayoutService(bot)
+    # asyncio.create_task(payout_service.start())
 
     # Start Polling
-    print("AlphaTrade Capital Bot running successfully.")
     logging.info("Starting AlphaTrade Capital Bot...")
     await dp.start_polling(bot)
 
