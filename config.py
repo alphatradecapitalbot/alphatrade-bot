@@ -27,7 +27,7 @@ INVESTMENT_DURATION = 24 # Hours
 # ==============================
 # TRONSCAN API
 # ==============================
-TRONSCAN_API = "https://apilist.tronscanapi.com/api/transaction-info"
+TRONSCAN_API = "https://apilist.tronscan.org/api/transaction-info"
 
 # ==============================
 # BUSINESS LOGIC

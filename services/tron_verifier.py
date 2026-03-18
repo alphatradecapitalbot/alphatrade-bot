@@ -31,8 +31,8 @@ async def verify_trc20(txid: str, expected_amount: float, bot: Bot = None):
     if data.get("contractRet") != "SUCCESS":
         return False, "La transacción no fue exitosa."
 
-    if not data.get("confirmed"):
-        return False, "La transacción aún no tiene confirmaciones suficientes."
+    if not data.get("confirmed") and data.get("confirmations", 0) < 1:
+        return False, "La transacción aún no tiene confirmaciones suficientes (mínimo 1)."
 
     # Extract token transfer info
     token_info_list = data.get("trc20TransferInfo", [])

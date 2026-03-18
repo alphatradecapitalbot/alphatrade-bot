@@ -101,14 +101,11 @@ async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
         )
         return
 
-    # 2. Notify group: new deposit received
-    await notify_new_deposit(bot, username, user_id, amount, plan_name, txid)
-
-    # 3. Notify group: verifying
+    # 2. Notify group: verifying
     verifying_msg = await message.answer("⏳ **Verificando transacción...**", parse_mode="Markdown")
     await notify_verifying(bot, username, user_id)
 
-    # 4. Auto-verify with TronScan
+    # 3. Auto-verify with TronScan
     from services.tron_verifier import verify_trc20
     is_valid, report = await verify_trc20(txid, amount, bot)
 
@@ -117,11 +114,15 @@ async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
             f"❌ **Transacción inválida.**\n\nDetalle: {report}",
             parse_mode="Markdown"
         )
+        db.add_operation_record("Depósito Fallido", f"User {user_id} - TXID {txid} - Motivo: {report}")
         await notify_deposit_failed(bot, username, user_id, txid, report)
         return
 
-    # 5. Mark TXID used & save deposit
+    # 4. Success: Process automated deposit
+    db.add_operation_record("Depósito Verificado", f"User {user_id} - {amount} USDT - TXID {txid}")
     db.mark_txid_used(txid, user_id)
+    
+    # Save deposit record
     deposit_id = db.add_deposit(
         user_id=user_id,
         amount=amount,
@@ -134,9 +135,14 @@ async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
         profit=profit,
         total_return=total_return
     )
+    
+    # Approve deposit automatically and update total_invested
     db.update_deposit_status(deposit_id, "confirmed")
+    
+    # Update user withdrawable balance (as requested)
+    db.add_user_balance(user_id, amount)
 
-    # 6. Activate investment automatically
+    # Activate investment automatically
     db.create_investment(
         user_id=user_id,
         capital=amount,
@@ -148,16 +154,17 @@ async def process_txid(message: types.Message, state: FSMContext, bot: Bot):
     )
     db.set_user_active_investment(user_id, True)
 
-    # 7. Confirm to user
+    # 5. Confirm to user
     await verifying_msg.edit_text(
-        "✅ **Depósito confirmado**\n\n"
+        "✅ **Depósito confirmado automáticamente**\n\n"
         f"Monto: **{amount} USDT**\n"
         f"Plan: **{plan_name}**\n\n"
-        "Inversión activada. Recibirás tus ganancias en 24 horas.",
+        "Balance actualizado e inversión activada. Recibirás tus ganancias en 24 horas.",
         parse_mode="Markdown"
     )
 
-    # 8. Notify group: deposit approved
+    # 6. Notify group: deposit approved
     await notify_deposit_approved(bot, username, user_id, amount, plan_name)
+    await notify_system_log(bot, "Depósito Automático", f"Usuario {username} ({user_id}) - {amount} USDT")
 
     await state.clear()
